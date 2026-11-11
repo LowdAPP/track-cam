@@ -12,7 +12,9 @@
       "infoPlist": {
         "NSCameraUsageDescription": "A câmara é usada para detetar e seguir os jogadores.",
         "UIRequiresFullScreen": true,
-        "NSMicrophoneUsageDescription": "O microfone grava o som do jogo."
+        "NSMicrophoneUsageDescription": "O microfone grava o som do jogo.",
+        "UIFileSharingEnabled": true,
+        "LSSupportsOpeningDocumentsInPlace": true
       }
     },
     "plugins": [
