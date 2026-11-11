@@ -10,10 +10,26 @@
       "bundleIdentifier": "com.lowd.trackcam",
       "supportsTablet": false,
       "infoPlist": {
-        "NSCameraUsageDescription": "A câmara é usada para detetar e seguir os jogadores e a bola.",
-        "UIRequiresFullScreen": true
+        "NSCameraUsageDescription": "A câmara é usada para detetar e seguir os jogadores.",
+        "UIRequiresFullScreen": true,
+        "NSMicrophoneUsageDescription": "O microfone grava o som do jogo."
       }
     },
-    "plugins": ["react-native-fast-tflite"]
+    "plugins": [
+      "react-native-fast-tflite",
+      "expo-router",
+      "expo-status-bar",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Os vídeos dos jogos são guardados nas Fotografias.",
+          "savePhotosPermission": "Os vídeos dos jogos são guardados nas Fotografias."
+        }
+      ]
+    ],
+    "scheme": "trackcam",
+    "experiments": {
+      "typedRoutes": true
+    }
   }
 }

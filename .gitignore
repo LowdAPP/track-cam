@@ -42,3 +42,7 @@ yarn-error.*
 
 # superpowers (esboços do brainstorming)
 .superpowers/
+
+# vídeos de jogos (nunca vão para o repositório)
+footage/
+tools/replay/.venv/
