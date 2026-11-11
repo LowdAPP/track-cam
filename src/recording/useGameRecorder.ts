@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   type Recorder,
   type RecordingFinishedReason,
-  useMicrophonePermission,
   useVideoOutput,
 } from 'react-native-vision-camera'
 
@@ -38,9 +37,8 @@ interface Session {
 }
 
 /** Grava o jogo em vídeos seguidos de até 3 minutos e guarda-os nas Fotografias. */
-export function useGameRecorder() {
-  const videoOutput = useVideoOutput({ enableAudio: true })
-  const microphone = useMicrophonePermission()
+export function useGameRecorder(audio: boolean) {
+  const videoOutput = useVideoOutput({ enableAudio: audio })
   const [status, setStatus] = useState<RecorderStatus>('idle')
   const [elapsedSec, setElapsedSec] = useState(0)
   const [segment, setSegment] = useState(0)
@@ -126,11 +124,9 @@ export function useGameRecorder() {
 
   const start = useCallback(async () => {
     if (session.current != null) return
-    setNotice(null)
-    if (!microphone.hasPermission && !(await microphone.requestPermission())) {
-      setNotice('Sem permissão para o microfone. Ative-a nas Definições para gravar com som.')
-      return
-    }
+    setNotice(
+      audio ? null : 'A gravar sem som: falta a permissão do microfone (Definições → TrackCam).',
+    )
     const library = await requestPermissionsAsync(true)
     if (!library.granted) {
       setNotice('Sem permissão para guardar nas Fotografias. Ative-a nas Definições.')
@@ -164,7 +160,7 @@ export function useGameRecorder() {
       setStatus('idle')
       setNotice(`Não foi possível começar a gravar: ${String(e)}`)
     }
-  }, [microphone, startSegment])
+  }, [audio, startSegment])
 
   const stop = useCallback(async () => {
     const s = session.current
