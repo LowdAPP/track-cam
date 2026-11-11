@@ -6,17 +6,19 @@ export interface YuvPlanes {
   yRowBytes: number
   uv: Uint8Array
   uvRowBytes: number
+  /** false = gama de vídeo (Y de 16 a 235), o habitual na câmara do iPhone */
+  fullRange: boolean
 }
 
 function byte(v: number): number {
   'worklet'
-  return v < 0 ? 0 : v > 255 ? 255 : v
+  return v < 0 ? 0 : v > 255 ? 255 : Math.round(v)
 }
 
 /**
  * Recorta `region` e reduz para `size` x `size` RGB intercalado, por vizinho
  * mais próximo. Escreve em `out` (size * size * 3) sem alocar memória.
- * Conversão BT.601 de gama completa.
+ * Conversão BT.601, de gama completa ou de vídeo.
  */
 export function cropToRgb(
   planes: YuvPlanes,
@@ -26,6 +28,9 @@ export function cropToRgb(
 ): void {
   'worklet'
   const { y, yRowBytes, uv, uvRowBytes } = planes
+  const lumaScale = planes.fullRange ? 1 : 255 / 219
+  const lumaOffset = planes.fullRange ? 0 : 16
+  const chromaScale = planes.fullRange ? 1 : 255 / 224
   const scale = region.size / size
   let o = 0
   for (let j = 0; j < size; j++) {
@@ -34,10 +39,10 @@ export function cropToRgb(
     const uvRow = (py >> 1) * uvRowBytes
     for (let i = 0; i < size; i++) {
       const px = region.left + Math.floor((i + 0.5) * scale)
-      const luma = y[yRow + px]!
+      const luma = (y[yRow + px]! - lumaOffset) * lumaScale
       const uvAt = uvRow + (px >> 1) * 2
-      const cb = uv[uvAt]! - 128
-      const cr = uv[uvAt + 1]! - 128
+      const cb = (uv[uvAt]! - 128) * chromaScale
+      const cr = (uv[uvAt + 1]! - 128) * chromaScale
       out[o++] = byte(luma + 1.402 * cr)
       out[o++] = byte(luma - 0.344136 * cb - 0.714136 * cr)
       out[o++] = byte(luma + 1.772 * cb)

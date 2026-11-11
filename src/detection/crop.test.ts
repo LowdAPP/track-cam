@@ -8,6 +8,7 @@ function solidYuv(w: number, h: number, y: number, cb: number, cr: number, rowBy
     yRowBytes: rowBytes,
     uv: new Uint8Array(rowBytes * uvRows),
     uvRowBytes: rowBytes,
+    fullRange: true,
   }
   for (let i = 0; i < planes.uv.length; i += 2) {
     planes.uv[i] = cb
@@ -53,4 +54,12 @@ test('converte a cor: vermelho puro em YCbCr dá vermelho em RGB', () => {
   expect(out[0]).toBeGreaterThan(240)
   expect(out[1]).toBeLessThan(15)
   expect(out[2]).toBeLessThan(15)
+})
+
+test('gama de vídeo (16 a 235) é esticada para 0 a 255', () => {
+  const out = new Uint8Array(3)
+  cropToRgb({ ...solidYuv(16, 16, 16, 128, 128), fullRange: false }, { left: 0, top: 0, size: 16 }, 1, out)
+  expect(Math.max(...out)).toBeLessThanOrEqual(1)
+  cropToRgb({ ...solidYuv(16, 16, 235, 128, 128), fullRange: false }, { left: 0, top: 0, size: 16 }, 1, out)
+  expect(Math.min(...out)).toBeGreaterThanOrEqual(254)
 })
