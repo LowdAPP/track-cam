@@ -35,6 +35,7 @@ interface Options {
 
 export function useDetection({ focus, onResult, onError }: Options) {
   // Corre no CPU; o delegate Core ML fica para se os fps não chegarem.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- os modelos carregam-se com require()
   const tflite = useTensorflowModel(require('../../assets/efficientdet.tflite'), [])
   const model = tflite.state === 'loaded' ? tflite.model : undefined
 

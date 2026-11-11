@@ -48,6 +48,8 @@ export function useGameRecorder() {
   const [moments, setMoments] = useState(0)
   const session = useRef<Session | null>(null)
   const startedAt = useRef(0)
+  // o segmento seguinte arranca a partir do fim do anterior, por isso a função chama-se a si própria
+  const startSegmentRef = useRef<(s: Session, index: number) => Promise<void>>(async () => {})
 
   useEffect(() => {
     if (status !== 'recording') return
@@ -85,7 +87,7 @@ export function useGameRecorder() {
         if (session.current !== s) return
         const next = afterSegment(reason, s.userStopped)
         if (next.kind === 'start-next') {
-          startSegment(s, index + 1).catch((e) => {
+          startSegmentRef.current(s, index + 1).catch((e) => {
             session.current = null
             setStatus('interrupted')
             setNotice(`A gravação parou: ${String(e)}. Toque em gravar para continuar.`)
@@ -118,6 +120,9 @@ export function useGameRecorder() {
     },
     [save, videoOutput],
   )
+  useEffect(() => {
+    startSegmentRef.current = startSegment
+  }, [startSegment])
 
   const start = useCallback(async () => {
     if (session.current != null) return

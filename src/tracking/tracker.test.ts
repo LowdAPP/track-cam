@@ -1,5 +1,5 @@
 import { center, type Point } from './geometry'
-import { IDLE, pick, step, type PersonDetection, type TrackState } from './tracker'
+import { IDLE, pick, rescale, step, type PersonDetection, type TrackState } from './tracker'
 
 const oneHot = (i: number) => Array.from({ length: 64 }, (_, k) => (k === i ? 1 : 0))
 const RED = oneHot(48)
@@ -116,4 +116,15 @@ test('nunca produz NaN', () => {
   s = run(s, [[], [], [person(0.3, 0.5, RED)]])
   s = step(s, [], 0)
   expect(Number.isFinite(s.box!.x) && Number.isFinite(s.velocity.x)).toBe(true)
+})
+
+test('rescale: ao mudar o zoom, as posições afastam-se ou aproximam-se do centro', () => {
+  let s = pick(IDLE, [person(0.6, 0.5, RED), person(0.3, 0.5, BLUE)], { x: 0.6, y: 0.5 })
+  s = rescale(s, 2) // de 1x para 2x
+  expect(center(s.box!).x).toBeCloseTo(0.7)
+  expect(s.box!.w).toBeCloseTo(0.1)
+  expect(s.box!.h).toBeCloseTo(0.4)
+  expect(center(s.others[0]!).x).toBeCloseTo(0.1)
+  expect(rescale(IDLE, 2)).toBe(IDLE)
+  expect(rescale(s, 1)).toBe(s)
 })

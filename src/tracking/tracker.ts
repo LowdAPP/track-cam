@@ -265,3 +265,25 @@ function search(
   }
   return { ...still, candidate: { box: best.box, frames }, others: boxesExcept(detections, best) }
 }
+
+/**
+ * O zoom mudou por um fator (novo / antigo): tudo o que o seguidor guarda
+ * afasta-se ou aproxima-se do centro da imagem na mesma proporção.
+ */
+export function rescale(state: TrackState, factor: number): TrackState {
+  if (state.status === 'idle' || factor === 1 || !(factor > 0)) return state
+  const scale = (b: Box): Box => ({
+    x: 0.5 + (b.x - 0.5) * factor,
+    y: 0.5 + (b.y - 0.5) * factor,
+    w: b.w * factor,
+    h: b.h * factor,
+  })
+  return {
+    ...state,
+    box: state.box == null ? null : scale(state.box),
+    velocity: { x: state.velocity.x * factor, y: state.velocity.y * factor },
+    candidate:
+      state.candidate == null ? null : { ...state.candidate, box: scale(state.candidate.box) },
+    others: state.others.map(scale),
+  }
+}
