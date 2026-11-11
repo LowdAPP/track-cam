@@ -1,52 +1,98 @@
-# TrackCam (MVP v0)
+# TrackCam
 
-App de iPhone que deteta jogadores e bola com a câmara, deixa escolher um alvo
-com um toque e mostra o desvio do alvo em relação ao centro (pan/tilt).
-Ainda não grava vídeo nem fala com motores.
+App de iPhone que segue um jogador de futsal com um **DJI Osmo Mobile 8** em
+tripé e grava o jogo inteiro. Toca-se no jogador, o Osmo roda para o manter no
+centro, e um botão marca os momentos a cortar mais tarde.
 
 ## Estado
 
-- Compila em TypeScript, o bundle iOS é gerado e o `expo prebuild` passa.
-- **Nunca correu num iPhone.** O primeiro build no GitHub Actions e o primeiro
-  arranque no telemóvel são o teste real.
+- **Base** (este branch): seguir um jogador, gravar o jogo em vídeos de 3
+  minutos, marcar momentos, zoom à mão. Compila e instala; **ainda não foi
+  testada num jogo**.
+- Por fazer, por esta ordem: seguir a bola, detetar golos, cortar os melhores
+  momentos sozinha.
 
-## Como obter o .ipa (sem Xcode no Mac)
+## Preparar o Osmo
 
-1. Crie um repositório no GitHub e faça push desta pasta para o branch `main`.
-2. O workflow `iOS IPA (sem assinatura)` corre sozinho (separador **Actions**).
-3. No fim, descarregue o artefacto `TrackCam-ipa` e extraia o `TrackCam.ipa`.
-4. Instale o `.ipa` no iPhone com o SideStore ou o AltStore.
-
-Com conta Apple gratuita, a app tem de ser renovada a cada 7 dias.
+1. iPhone 12 ou mais recente, com iOS 18.5 ou superior.
+2. **Retire o Módulo Multifunções** do Osmo. Com ele posto, é o módulo que
+   segue e a app fica como "Osmo não ligado".
+3. Feche a app DJI Mimo.
+4. Encoste o iPhone ao Osmo para emparelhar por NFC. Se o aviso não aparecer,
+   esqueça o Osmo nas definições de Bluetooth, reponha o Bluetooth do Osmo e
+   tente outra vez.
+5. Ponha o telemóvel **na horizontal**.
 
 ## Como usar
 
-- Segure o telemóvel deitado (a app só funciona em paisagem).
-- As caixas verdes são jogadores; as laranja são bolas.
-- Toque numa caixa para a seguir. O círculo amarelo é o alvo.
-- Em baixo aparece o desvio: `pan` (esquerda/direita) e `tilt` (cima/baixo),
-  de -100% a 100%. É este valor que mais tarde vai para os motores.
-- Em cima aparecem os fps, o número de deteções e qualquer erro.
+- **Toque no jogador** que quer seguir. A caixa dele fica destacada e o Osmo
+  começa a rodar.
+- **1x, 2x, 3x** (em baixo): zoom.
+- **Botão vermelho** (à direita): começa e para a gravação.
+- **Marcar momento** (aparece ao gravar): regista o instante, para cortar depois.
+- **Largar alvo**: deixa de seguir e o Osmo fica parado.
+- Se aparecer **"Jogador perdido"**, o Osmo para e o zoom abre para 1x. A app
+  continua a procurá-lo; para retomar já, toque nele outra vez. Se trocar de
+  jogador num cruzamento, toque no certo.
+
+Em cima vê-se o estado do Osmo, o tempo de gravação e a parte em curso.
+
+## Onde ficam os vídeos
+
+- Os vídeos vão para a app **Fotografias**, em partes de até 3 minutos
+  (`2026-11-11_18-30-05_parte-01.mov`, `parte-02`, …), 1080p, com som e sem as
+  caixas por cima.
+- Os momentos marcados ficam em `momentos.json`, na app **Ficheiros** →
+  *No meu iPhone* → *TrackCam* → `jogos/<data do jogo>/`. Cada momento diz a
+  parte e o segundo dentro dela.
+- Um jogo de 40 minutos ocupa cerca de 2,5 GB.
+- Se uma chamada ou outra app interromper a gravação, ela **não retoma
+  sozinha**: a app avisa e é preciso tocar em gravar outra vez.
+
+## Como obter o .ipa (sem Xcode no Mac)
+
+1. Faça push do branch; ou lance o build à mão:
+   `gh workflow run ios-ipa.yml --ref <branch>`.
+2. No separador **Actions** do GitHub, descarregue o artefacto `TrackCam-ipa`.
+3. Instale o `TrackCam.ipa` no iPhone com o SideStore ou o AltStore.
+
+Com conta Apple gratuita, a app tem de ser renovada a cada 7 dias. O Osmo não
+funciona no Expo Go nem no simulador.
+
+## Desenvolver
+
+```bash
+npm test            # testes
+npx tsc --noEmit    # tipos
+npx expo lint       # lint
+```
+
+Para instalar pacotes, use sempre `npx expo install <pacote>`.
+
+Para experimentar o seguidor em vídeos de jogos reais, sem telemóvel, veja a
+[bancada de replay](tools/replay/README.md). Os vídeos ficam em `footage/`,
+que o git ignora: o repositório é público, **nunca os adicione a um commit**.
 
 ## Peças
 
-| Ficheiro | O que faz |
+| Pasta | O que faz |
 |---|---|
-| `App.tsx` | Câmara, deteção em cada frame, caixas, alvo e leitura pan/tilt |
-| `src/detection.ts` | Constantes do modelo, seguimento do alvo e cálculo do erro |
-| `assets/efficientdet.tflite` | Modelo EfficientDet-Lite0 (COCO), 320×320 |
-| `.github/workflows/ios-ipa.yml` | Build do `.ipa` no GitHub Actions |
+| `src/app/` | Rotas (Expo Router) |
+| `src/screen/` | Ecrã de jogo: câmara, caixas, controlos, avisos |
+| `src/detection/` | Modelo de deteção: imagem inteira e recorte à volta do alvo |
+| `src/tracking/` | Seguidor: posição, velocidade, cor do equipamento, readquisição |
+| `src/dock/` | Comandos para o Osmo |
+| `src/recording/` | Gravação em partes e momentos |
+| `modules/trackcam-dock/` | Módulo nativo (Swift) que fala com o Osmo pelo DockKit |
+| `tools/replay/` | Bancada de replay com vídeos reais |
+| `docs/superpowers/` | Desenho e plano da base |
+
+As constantes do seguidor estão em `src/tracking/config.ts`.
 
 ## Limitações conhecidas
 
-- O modelo é pequeno e genérico: vê bem pessoas, mas a bola ao longe deve
-  falhar muitas vezes. Se o teste em campo confirmar, troca-se por um YOLO.
-- O seguimento é simples (a deteção mais próxima da última posição). Quando
-  dois jogadores se cruzam, pode saltar para o outro.
-- O modelo corre no CPU. O delegate Core ML fica para depois de a base funcionar.
-
-## Próximos passos
-
-1. Fazer o primeiro build e corrigir o que falhar.
-2. Testar num jogo, do sítio do tripé.
-3. v1: gravar vídeo, Bluetooth (BLE) e firmware do ESP32.
+- Entre colegas com o mesmo equipamento, a app arrisca e continua; pode
+  trocar de jogador num cruzamento.
+- O modelo é pequeno e genérico (EfficientDet-Lite0, no CPU): vê bem pessoas,
+  mas ainda não serve para seguir a bola.
+- Só iOS.
