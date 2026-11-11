@@ -19,6 +19,11 @@ export interface RawDetection {
   ay: number
   bx: number
   by: number
+  // caixa de 0 a 1 na imagem direita, origem em cima à esquerda
+  nx: number
+  ny: number
+  nw: number
+  nh: number
 }
 
 /** Deteção já convertida para coordenadas do ecrã. */
@@ -31,12 +36,21 @@ export interface Detection {
   height: number
   cx: number
   cy: number
+  nx: number
+  ny: number
+  nw: number
+  nh: number
 }
 
 export interface Target {
   kind: TargetKind
   cx: number
   cy: number
+  // última caixa conhecida, de 0 a 1 na imagem
+  nx: number
+  ny: number
+  nw: number
+  nh: number
   /** quantos resultados seguidos sem encontrar o alvo */
   lost: number
 }
@@ -61,7 +75,16 @@ export function updateTarget(
     }
   }
   if (best == null) return { ...target, lost: target.lost + 1 }
-  return { kind: target.kind, cx: best.cx, cy: best.cy, lost: 0 }
+  return {
+    kind: target.kind,
+    cx: best.cx,
+    cy: best.cy,
+    nx: best.nx,
+    ny: best.ny,
+    nw: best.nw,
+    nh: best.nh,
+    lost: 0,
+  }
 }
 
 /**

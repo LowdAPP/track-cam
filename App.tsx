@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   type LayoutChangeEvent,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -29,6 +30,17 @@ import {
   targetError,
   updateTarget,
 } from './src/detection'
+import Dock, {
+  type DockMotion,
+  type DockOrientation,
+  type DockResult,
+  type DockState,
+} from './modules/trackcam-dock'
+
+// SPIKE (descartável): painel para descobrir o que o estabilizador aceita.
+type DockMode = 'off' | 'system' | 'custom'
+const ORIENTATIONS: DockOrientation[] = ['corrected', 'landscapeRight', 'landscapeLeft']
+const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
 const LOST_LIMIT = 30
 
@@ -45,6 +57,155 @@ export default function App() {
   const sizeRef = useRef(size)
   sizeRef.current = size
   const lastResult = useRef(0)
+
+  // --- SPIKE DockKit ---
+  const [dock, setDock] = useState<DockState | null>(null)
+  const [motion, setMotion] = useState<DockMotion | null>(null)
+  const [mode, setMode] = useState<DockMode>('off')
+  const [flipY, setFlipY] = useState(false)
+  const [orientation, setOrientation] = useState<DockOrientation>('corrected')
+  const [log, setLog] = useState<string[]>([])
+  const [sent, setSent] = useState({ ok: 0, fail: 0, error: '' })
+  const [testing, setTesting] = useState(false)
+
+  const targetRef = useRef<Target | null>(null)
+  const motionRef = useRef<DockMotion | null>(null)
+  const modeRef = useRef(mode)
+  modeRef.current = mode
+  const flipYRef = useRef(flipY)
+  flipYRef.current = flipY
+  const orientationRef = useRef(orientation)
+  orientationRef.current = orientation
+  const sending = useRef(false)
+
+  const addLog = useCallback((line: string) => {
+    setLog((prev) => [line, ...prev].slice(0, 40))
+  }, [])
+
+  const report = useCallback(
+    (label: string, result: DockResult) => {
+      addLog(result.ok ? `OK    ${label}` : `ERRO  ${label}: ${result.error ?? '?'}`)
+      return result.ok
+    },
+    [addLog],
+  )
+
+  useEffect(() => {
+    const stateSub = Dock.addListener('onDockState', (state) => {
+      setDock(state)
+      addLog(
+        state.docked
+          ? `Ligado: ${state.name ?? '?'} · modelo ${state.model ?? '?'} · fw ${state.firmware ?? '?'}`
+          : `Desligado${state.error ? `: ${state.error}` : ''}`,
+      )
+    })
+    const motionSub = Dock.addListener('onDockMotion', (m) => {
+      motionRef.current = m
+      setMotion(m)
+    })
+    Dock.start().then((r) => {
+      if (!r.ok) addLog(`ERRO  arranque: ${r.error ?? '?'}`)
+    })
+    return () => {
+      stateSub.remove()
+      motionSub.remove()
+    }
+  }, [addLog])
+
+  const changeMode = useCallback(
+    async (next: DockMode) => {
+      setMode(next)
+      setSent({ ok: 0, fail: 0, error: '' })
+      const system = next === 'system'
+      report(
+        `seguimento do sistema ${system ? 'ligado' : 'desligado'}`,
+        await Dock.setSystemTracking(system),
+      )
+    },
+    [report],
+  )
+
+  const selectTarget = useCallback(
+    async (d: Detection) => {
+      const next: Target = {
+        kind: d.kind,
+        cx: d.cx,
+        cy: d.cy,
+        nx: d.nx,
+        ny: d.ny,
+        nw: d.nw,
+        nh: d.nh,
+        lost: 0,
+      }
+      targetRef.current = next
+      setTarget(next)
+      if (modeRef.current !== 'system') return
+      const x = d.nx + d.nw / 2
+      const y = d.ny + d.nh / 2
+      report('escolher pessoa (sistema)', await Dock.selectSubject(x, flipYRef.current ? 1 - y : y))
+    },
+    [report],
+  )
+
+  const dropTarget = useCallback(() => {
+    targetRef.current = null
+    setTarget(null)
+  }, [])
+
+  // Experimenta o controlo direto dos motores, passo a passo.
+  const testMotors = useCallback(async () => {
+    setTesting(true)
+    try {
+      await changeMode('off')
+      const yaw = () => motionRef.current?.yaw?.toFixed(0) ?? '?'
+      const pitch = () => motionRef.current?.pitch?.toFixed(0) ?? '?'
+
+      let before = yaw()
+      if (report('velocidade pan', await Dock.setVelocity(0, 0.3))) {
+        await wait(1200)
+        report('parar', await Dock.setVelocity(0, 0))
+        await wait(400)
+        addLog(`      pan ${before}° -> ${yaw()}°`)
+      }
+
+      before = pitch()
+      if (report('velocidade tilt', await Dock.setVelocity(0.2, 0))) {
+        await wait(1000)
+        report('parar', await Dock.setVelocity(0, 0))
+        await wait(400)
+        addLog(`      tilt ${before}° -> ${pitch()}°`)
+      }
+
+      before = yaw()
+      if (report('rodar -17° (posição)', await Dock.rotateBy(0, -0.3))) {
+        await wait(1800)
+        addLog(`      pan ${before}° -> ${yaw()}°`)
+      }
+
+      report('animação "sim"', await Dock.animateYes())
+      addLog('--- fim do teste dos motores ---')
+    } finally {
+      setTesting(false)
+    }
+  }, [addLog, changeMode, report])
+
+  // Seguimento próprio: envia a caixa do alvo para o DockKit centrar.
+  const sendTarget = useCallback((t: Target) => {
+    if (sending.current) return
+    sending.current = true
+    const y = flipYRef.current ? 1 - t.ny - t.nh : t.ny
+    Dock.track(t.nx, y, t.nw, t.nh, t.kind === 'person', orientationRef.current)
+      .then((r) => {
+        setSent((prev) =>
+          r.ok
+            ? { ...prev, ok: prev.ok + 1 }
+            : { ok: prev.ok, fail: prev.fail + 1, error: r.error ?? '?' },
+        )
+      })
+      .finally(() => {
+        sending.current = false
+      })
+  }, [])
 
   useEffect(() => {
     if (!hasPermission) requestPermission()
@@ -88,6 +249,10 @@ export default function App() {
         next.push({
           kind: r.kind,
           score: r.score,
+          nx: r.nx,
+          ny: r.ny,
+          nw: r.nw,
+          nh: r.nh,
           left,
           top,
           width,
@@ -101,12 +266,13 @@ export default function App() {
       return
     }
     setDetections(next)
-    setTarget((prev) => {
-      if (prev == null) return prev
-      const maxJump = sizeRef.current.width * 0.25
-      return updateTarget(prev, next, maxJump)
-    })
-  }, [])
+    const prev = targetRef.current
+    if (prev == null) return
+    const updated = updateTarget(prev, next, sizeRef.current.width * 0.25)
+    targetRef.current = updated
+    setTarget(updated)
+    if (modeRef.current === 'custom' && updated.lost === 0) sendTarget(updated)
+  }, [sendTarget])
 
   const onWorkletError = useCallback((message: string) => {
     setError(message)
@@ -153,6 +319,10 @@ export default function App() {
             ay: a.y,
             bx: b.x,
             by: b.y,
+            nx: xmin,
+            ny: ymin,
+            nw: xmax - xmin,
+            nh: ymax - ymin,
           })
         }
         scheduleOnRN(onResult, result)
@@ -204,7 +374,7 @@ export default function App() {
       {detections.map((d, i) => (
         <Pressable
           key={i}
-          onPress={() => setTarget({ kind: d.kind, cx: d.cx, cy: d.cy, lost: 0 })}
+          onPress={() => selectTarget(d)}
           style={[
             styles.box,
             d.kind === 'ball' ? styles.boxBall : styles.boxPerson,
@@ -234,6 +404,87 @@ export default function App() {
         <Text style={styles.statusText}>{status}</Text>
       </View>
 
+      <View style={styles.panel}>
+        <Text style={styles.panelTitle}>
+          {dock?.docked ? `DockKit: ${dock.name ?? 'ligado'}` : 'DockKit: sem estabilizador'}
+        </Text>
+        {motion != null && (
+          <Text style={styles.panelText}>
+            pan {motion.yaw?.toFixed(0) ?? '?'}° · tilt {motion.pitch?.toFixed(0) ?? '?'}°
+            {motion.error ? ` · ${motion.error}` : ''}
+          </Text>
+        )}
+
+        <View style={styles.row}>
+          {(
+            [
+              ['off', 'Parado'],
+              ['system', '1 Sistema'],
+              ['custom', '2 Nosso'],
+            ] as const
+          ).map(([value, label]) => (
+            <Pressable
+              key={value}
+              disabled={testing}
+              onPress={() => changeMode(value)}
+              style={[styles.chip, mode === value && styles.chipOn]}
+            >
+              <Text style={[styles.chipText, mode === value && styles.chipTextOn]}>{label}</Text>
+            </Pressable>
+          ))}
+        </View>
+
+        <View style={styles.row}>
+          <Pressable
+            disabled={testing}
+            onPress={testMotors}
+            style={[styles.chip, testing && styles.chipOn]}
+          >
+            <Text style={[styles.chipText, testing && styles.chipTextOn]}>
+              {testing ? 'A testar motores…' : '3 Testar motores'}
+            </Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.row}>
+          <Pressable
+            onPress={() => setFlipY((v) => !v)}
+            style={[styles.chip, flipY && styles.chipOn]}
+          >
+            <Text style={[styles.chipText, flipY && styles.chipTextOn]}>Inverter Y</Text>
+          </Pressable>
+          <Pressable
+            onPress={() =>
+              setOrientation(
+                (o) => ORIENTATIONS[(ORIENTATIONS.indexOf(o) + 1) % ORIENTATIONS.length]!,
+              )
+            }
+            style={styles.chip}
+          >
+            <Text style={styles.chipText}>{orientation}</Text>
+          </Pressable>
+        </View>
+
+        {mode === 'custom' && (
+          <Text style={styles.panelText}>
+            {target == null
+              ? 'Toque numa caixa para enviar'
+              : `enviadas ${sent.ok} · recusadas ${sent.fail}${sent.error ? ` · ${sent.error}` : ''}`}
+          </Text>
+        )}
+        {mode === 'system' && (
+          <Text style={styles.panelText}>O iOS segue sozinho. Toque numa pessoa para a escolher.</Text>
+        )}
+
+        <ScrollView style={styles.log}>
+          {log.map((line, i) => (
+            <Text key={log.length - i} selectable style={styles.logLine}>
+              {line}
+            </Text>
+          ))}
+        </ScrollView>
+      </View>
+
       <View style={styles.bottomBar}>
         {target == null || err == null ? (
           <Text style={styles.statusText}>Toque num jogador ou na bola para seguir</Text>
@@ -243,7 +494,7 @@ export default function App() {
               {targetLost ? 'Alvo perdido · ' : ''}
               pan {(err.pan * 100).toFixed(0)}% · tilt {(err.tilt * 100).toFixed(0)}%
             </Text>
-            <Pressable style={styles.button} onPress={() => setTarget(null)}>
+            <Pressable style={styles.button} onPress={dropTarget}>
               <Text style={styles.buttonText}>Largar alvo</Text>
             </Pressable>
           </>
@@ -294,12 +545,41 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 16,
     top: 12,
-    right: 16,
+    right: 274,
   },
+  panel: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    bottom: 8,
+    width: 250,
+    padding: 8,
+    gap: 6,
+    borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+  },
+  panelTitle: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  panelText: { color: '#ddd', fontSize: 11 },
+  row: { flexDirection: 'row', gap: 6 },
+  chip: {
+    flex: 1,
+    minHeight: 40,
+    paddingHorizontal: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.5)',
+  },
+  chipOn: { backgroundColor: '#ffd54a', borderColor: '#ffd54a' },
+  chipText: { color: '#fff', fontSize: 12, fontWeight: '500' },
+  chipTextOn: { color: '#111' },
+  log: { flex: 1 },
+  logLine: { color: '#cfe', fontSize: 10, fontFamily: 'Menlo', marginBottom: 2 },
   bottomBar: {
     position: 'absolute',
     left: 16,
-    right: 16,
+    right: 274,
     bottom: 14,
     flexDirection: 'row',
     alignItems: 'center',
