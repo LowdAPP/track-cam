@@ -1,0 +1,19 @@
+{
+  "expo": {
+    "name": "TrackCam",
+    "slug": "track-cam",
+    "version": "0.1.0",
+    "orientation": "landscape",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "bundleIdentifier": "com.lowd.trackcam",
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSCameraUsageDescription": "A câmara é usada para detetar e seguir os jogadores e a bola.",
+        "UIRequiresFullScreen": true
+      }
+    },
+    "plugins": ["react-native-fast-tflite"]
+  }
+}
