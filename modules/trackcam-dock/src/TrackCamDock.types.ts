@@ -14,8 +14,6 @@ export type DockState = {
 /** Posição dos motores, em graus. */
 export type DockMotion = { pitch?: number; yaw?: number; error?: string }
 
-export type DockOrientation = 'corrected' | 'landscapeRight' | 'landscapeLeft' | 'portrait'
-
 export type TrackCamDockModuleEvents = {
   onDockState: (state: DockState) => void
   onDockMotion: (motion: DockMotion) => void

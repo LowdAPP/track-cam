@@ -1,30 +1,27 @@
 import { NativeModule, requireNativeModule } from 'expo'
 
-import type {
-  DockOrientation,
-  DockResult,
-  TrackCamDockModuleEvents,
-} from './TrackCamDock.types'
+import type { DockResult, TrackCamDockModuleEvents } from './TrackCamDock.types'
 
 declare class TrackCamDockModule extends NativeModule<TrackCamDockModuleEvents> {
+  /** Começa a ouvir ligações e desligações do estabilizador. */
   start(): Promise<DockResult>
-  setSystemTracking(enabled: boolean): Promise<DockResult>
-  /** Ponto de 0 a 1 em cada eixo. */
-  selectSubject(x: number, y: number): Promise<DockResult>
-  /** Caixa de 0 a 1 em cada eixo. */
-  track(
+  /** Assume o comando: desliga o seguimento do sistema. */
+  takeControl(): Promise<DockResult>
+  /**
+   * Aponta para uma caixa de 0 a 1, já com o Y contado a partir de baixo.
+   * `intrinsics` é a matriz 3x3 da câmara por linhas, ou null.
+   */
+  aim(
     x: number,
     y: number,
     width: number,
     height: number,
-    isPerson: boolean,
-    orientation: DockOrientation,
+    intrinsics: number[] | null,
+    referenceWidth: number,
+    referenceHeight: number,
   ): Promise<DockResult>
-  /** Velocidades em rad/s. */
-  setVelocity(pitch: number, yaw: number): Promise<DockResult>
-  /** Ângulos relativos em radianos. */
-  rotateBy(pitch: number, yaw: number): Promise<DockResult>
-  animateYes(): Promise<DockResult>
+  /** Para os motores. */
+  hold(): Promise<DockResult>
 }
 
 export default requireNativeModule<TrackCamDockModule>('TrackCamDock')

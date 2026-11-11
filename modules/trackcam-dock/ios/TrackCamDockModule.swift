@@ -1,8 +1,8 @@
 import ExpoModulesCore
 
-// SPIKE (descartável): expõe o DockController ao JavaScript.
-// Cada função devolve { ok, error? } em vez de rejeitar, para o ecrã de teste
-// poder mostrar exatamente o que o estabilizador aceitou e o que recusou.
+// Expõe o DockController ao JavaScript.
+// Cada função devolve { ok, error? } em vez de rejeitar, para o ecrã poder
+// mostrar exatamente o que o estabilizador aceitou e o que recusou.
 public class TrackCamDockModule: Module {
   private var controller: DockControlling?
 
@@ -22,34 +22,22 @@ public class TrackCamDockModule: Module {
       }
     }
 
-    AsyncFunction("setSystemTracking") { (enabled: Bool, promise: Promise) in
-      self.run(promise) { await $0.setSystemTracking(enabled) }
+    AsyncFunction("takeControl") { (promise: Promise) in
+      self.run(promise) { await $0.takeControl() }
     }
 
-    AsyncFunction("selectSubject") { (x: Double, y: Double, promise: Promise) in
-      self.run(promise) { await $0.selectSubject(x: x, y: y) }
-    }
-
-    AsyncFunction("track") {
-      (x: Double, y: Double, width: Double, height: Double, isPerson: Bool,
-       orientation: String, promise: Promise) in
+    AsyncFunction("aim") {
+      (x: Double, y: Double, width: Double, height: Double, intrinsics: [Double]?,
+       referenceWidth: Double, referenceHeight: Double, promise: Promise) in
       self.run(promise) {
-        await $0.track(
+        await $0.aim(
           x: x, y: y, width: width, height: height,
-          isPerson: isPerson, orientation: orientation)
+          intrinsics: intrinsics, referenceWidth: referenceWidth, referenceHeight: referenceHeight)
       }
     }
 
-    AsyncFunction("setVelocity") { (pitch: Double, yaw: Double, promise: Promise) in
-      self.run(promise) { await $0.setVelocity(pitch: pitch, yaw: yaw) }
-    }
-
-    AsyncFunction("rotateBy") { (pitch: Double, yaw: Double, promise: Promise) in
-      self.run(promise) { await $0.rotateBy(pitch: pitch, yaw: yaw) }
-    }
-
-    AsyncFunction("animateYes") { (promise: Promise) in
-      self.run(promise) { await $0.animateYes() }
+    AsyncFunction("hold") { (promise: Promise) in
+      self.run(promise) { await $0.hold() }
     }
   }
 

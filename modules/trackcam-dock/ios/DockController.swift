@@ -2,8 +2,9 @@ import AVFoundation
 import DockKit
 import Foundation
 import Spatial
+import simd
 
-// SPIKE (descartável): experimenta o que o estabilizador aceita via DockKit.
+// Fala com o estabilizador pelo DockKit.
 // Não depende do Expo, para poder ser verificado com o SDK do macOS.
 
 typealias DockPayload = [String: Any]
@@ -15,15 +16,12 @@ protocol DockControlling: AnyObject {
   var onMotion: ((DockPayload) -> Void)? { get set }
   func start()
   func stop()
-  func setSystemTracking(_ enabled: Bool) async -> DockPayload
-  func selectSubject(x: Double, y: Double) async -> DockPayload
-  func track(
+  func takeControl() async -> DockPayload
+  func aim(
     x: Double, y: Double, width: Double, height: Double,
-    isPerson: Bool, orientation: String
+    intrinsics: [Double]?, referenceWidth: Double, referenceHeight: Double
   ) async -> DockPayload
-  func setVelocity(pitch: Double, yaw: Double) async -> DockPayload
-  func rotateBy(pitch: Double, yaw: Double) async -> DockPayload
-  func animateYes() async -> DockPayload
+  func hold() async -> DockPayload
 }
 
 func makeDockController() -> DockControlling? {
@@ -73,55 +71,52 @@ final class DockController: DockControlling, @unchecked Sendable {
     motionTask = nil
   }
 
-  func setSystemTracking(_ enabled: Bool) async -> Payload {
+  /// Assume o comando: desliga o seguimento do sistema, para o iOS não
+  /// escolher sozinho quem seguir.
+  func takeControl() async -> Payload {
     do {
-      try await DockAccessoryManager.shared.setSystemTrackingEnabled(enabled)
+      try await DockAccessoryManager.shared.setSystemTrackingEnabled(false)
       return ["ok": true]
     } catch {
       return ["ok": false, "error": Self.text(error)]
     }
   }
 
-  /// Escolhe a pessoa nesse ponto (0..1) para o seguimento do sistema.
-  func selectSubject(x: Double, y: Double) async -> Payload {
-    await attempt { try await $0.selectSubject(at: CGPoint(x: x, y: y)) }
-  }
-
-  /// Seguimento próprio: envia uma caixa (0..1) para o DockKit centrar.
-  func track(
+  /// Aponta para uma caixa (0..1, com o Y contado a partir de baixo).
+  /// `intrinsics` é a matriz 3x3 da câmara por linhas, em píxeis de uma imagem
+  /// com as dimensões de referência; sem ela o DockKit usa valores por omissão.
+  func aim(
     x: Double, y: Double, width: Double, height: Double,
-    isPerson: Bool, orientation: String
+    intrinsics: [Double]?, referenceWidth: Double, referenceHeight: Double
   ) async -> Payload {
     let observation = DockAccessory.Observation(
       identifier: 0,
-      type: isPerson ? .humanBody : .object,
+      type: .humanBody,
       rect: CGRect(x: x, y: y, width: width, height: height)
     )
+    var matrix: matrix_float3x3?
+    var dimensions: CGSize?
+    if let k = intrinsics, k.count == 9, referenceWidth > 0, referenceHeight > 0 {
+      matrix = matrix_float3x3(rows: [
+        SIMD3(Float(k[0]), Float(k[1]), Float(k[2])),
+        SIMD3(Float(k[3]), Float(k[4]), Float(k[5])),
+        SIMD3(Float(k[6]), Float(k[7]), Float(k[8])),
+      ])
+      dimensions = CGSize(width: referenceWidth, height: referenceHeight)
+    }
     let info = DockAccessory.CameraInformation(
       captureDevice: .builtInWideAngleCamera,
       cameraPosition: .back,
-      orientation: Self.orientation(orientation),
-      cameraIntrinsics: nil,
-      referenceDimensions: nil
+      orientation: .corrected,
+      cameraIntrinsics: matrix,
+      referenceDimensions: dimensions
     )
     return await attempt { try await $0.track([observation], cameraInformation: info) }
   }
 
-  /// Velocidade dos motores em rad/s (pitch = cima/baixo, yaw = esquerda/direita).
-  func setVelocity(pitch: Double, yaw: Double) async -> Payload {
-    await attempt { try await $0.setAngularVelocity(Vector3D(x: pitch, y: yaw, z: 0)) }
-  }
-
-  /// Roda um ângulo relativo, em radianos.
-  func rotateBy(pitch: Double, yaw: Double) async -> Payload {
-    await attempt {
-      _ = try await $0.setOrientation(
-        Vector3D(x: pitch, y: yaw, z: 0), duration: .seconds(1), relative: true)
-    }
-  }
-
-  func animateYes() async -> Payload {
-    await attempt { _ = try await $0.animate(motion: .yes) }
+  /// Para os motores.
+  func hold() async -> Payload {
+    await attempt { try await $0.setAngularVelocity(Vector3D()) }
   }
 
   // MARK: - Internos
@@ -175,15 +170,6 @@ final class DockController: DockControlling, @unchecked Sendable {
       payload["firmware"] = accessory.firmwareVersion ?? ""
     }
     return payload
-  }
-
-  private static func orientation(_ name: String) -> DockAccessory.CameraOrientation {
-    switch name {
-    case "landscapeLeft": return .landscapeLeft
-    case "landscapeRight": return .landscapeRight
-    case "portrait": return .portrait
-    default: return .corrected
-    }
   }
 
   /// Nome do erro (por exemplo "notSupportedByDevice") e a descrição do sistema.
