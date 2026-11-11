@@ -18,6 +18,8 @@ export interface TrackState {
   /** por segundo */
   velocity: Point
   reference: number[] | null
+  /** aspeto do alvo nos últimos frames em que foi visto */
+  recent: number[] | null
   /** há quanto tempo não vê o alvo */
   unseenMs: number
   /** candidato a readquirir enquanto perdido */
@@ -27,7 +29,13 @@ export interface TrackState {
    * não pode ser o alvo: é assim que um colega com o mesmo equipamento não
    * herda o seguimento quando o alvo fica tapado ou sai da imagem.
    */
-  others: Box[]
+  others: Other[]
+}
+
+/** Outra pessoa à vista, e há quanto tempo o detetor não a vê. */
+export interface Other {
+  box: Box
+  unseenMs: number
 }
 
 export const IDLE: TrackState = {
@@ -35,6 +43,7 @@ export const IDLE: TrackState = {
   box: null,
   velocity: { x: 0, y: 0 },
   reference: null,
+  recent: null,
   unseenMs: 0,
   candidate: null,
   others: [],
@@ -66,9 +75,10 @@ export function pick(state: TrackState, detections: PersonDetection[], at: Point
     box: chosen.box,
     velocity: { x: 0, y: 0 },
     reference: chosen.look,
+    recent: chosen.look,
     unseenMs: 0,
     candidate: null,
-    others: boxesExcept(detections, chosen),
+    others: othersAfter([], detections, chosen, 0),
   }
 }
 
@@ -88,8 +98,30 @@ function moved(box: Box, to: Point): Box {
   return { x: to.x - box.w / 2, y: to.y - box.h / 2, w: box.w, h: box.h }
 }
 
-function boxesExcept(detections: PersonDetection[], except: PersonDetection | null): Box[] {
-  return detections.filter((d) => d !== except).map((d) => d.box)
+/**
+ * As outras pessoas depois deste frame: todas as deteções menos o alvo (e
+ * menos quem está tão em cima dele que não se distingue), mais as que o
+ * detetor falhou há pouco.
+ */
+function othersAfter(
+  previous: Other[],
+  detections: PersonDetection[],
+  target: PersonDetection | null,
+  dtMs: number,
+): Other[] {
+  const out: Other[] = []
+  for (const d of detections) {
+    if (d === target) continue
+    if (target != null && iou(target.box, d.box) >= TRACK.mergedIou) continue
+    out.push({ box: d.box, unseenMs: 0 })
+  }
+  for (const o of previous) {
+    const unseenMs = o.unseenMs + dtMs
+    if (unseenMs > TRACK.otherMemoryMs) continue
+    if (detections.some((d) => iou(o.box, d.box) >= TRACK.claimIou)) continue
+    out.push({ box: o.box, unseenMs })
+  }
+  return out
 }
 
 /** A caixa prevista está encostada a uma borda e a mover-se para fora dela? */
@@ -109,12 +141,12 @@ function leaving(predicted: Box, v: Point): boolean {
  * se sobrepuser ainda mais a `target`, fica livre para ser o alvo.
  */
 function claimed(
-  others: Box[],
+  others: Other[],
   detections: PersonDetection[],
   target: Box | null,
 ): Set<PersonDetection> {
   const out = new Set<PersonDetection>()
-  for (const o of others) {
+  for (const { box: o } of others) {
     let best: PersonDetection | null = null
     let bestIou: number = TRACK.claimIou
     for (const d of detections) {
@@ -125,7 +157,7 @@ function claimed(
       }
     }
     if (best == null) continue
-    if (target != null && iou(target, best.box) > bestIou) continue
+    if (target != null && iou(target, best.box) >= TRACK.claimIou) continue
     out.add(best)
   }
   return out
@@ -139,6 +171,7 @@ function follow(
   dtMs: number,
 ): TrackState {
   const dt = dtMs / 1000
+  const recent = state.recent ?? reference
   const c = center(box)
   const predicted = { x: c.x + state.velocity.x * dt, y: c.y + state.velocity.y * dt }
   const predictedBox = moved(box, predicted)
@@ -146,7 +179,7 @@ function follow(
   const radius = atEdge
     ? TRACK.edgeGate
     : clamp(
-        diagonal(box) * TRACK.gateDiagonals * (1 + (TRACK.gateGrowthPerSec * state.unseenMs) / 1000),
+        diagonal(box) * TRACK.gateDiagonals + (TRACK.gateSpeed * (state.unseenMs + dtMs)) / 1000,
         TRACK.gateMin,
         TRACK.gateMax,
       )
@@ -163,7 +196,7 @@ function follow(
     if (dist >= radius) continue
     const ratio = boxArea > 0 ? area(d.box) / boxArea : 1
     if (ratio < TRACK.areaRatioMin || ratio > TRACK.areaRatioMax) continue
-    const look = similarity(d.look, reference)
+    const look = similarity(d.look, recent)
     if (look < TRACK.clearlyDifferent) continue
     candidates++
     const score =
@@ -186,9 +219,10 @@ function follow(
         ? { x: 0, y: 0 }
         : { x: state.velocity.x * TRACK.velocityDamping, y: state.velocity.y * TRACK.velocityDamping },
       reference,
+      recent,
       unseenMs,
       candidate: null,
-      others: boxesExcept(detections, null),
+      others: othersAfter(state.others, detections, null, dtMs),
     }
   }
 
@@ -204,9 +238,10 @@ function follow(
     box: { x: next.x - w / 2, y: next.y - h / 2, w, h },
     velocity: { x: state.velocity.x + gain * rx, y: state.velocity.y + gain * ry },
     reference: candidates === 1 ? blend(reference, winner.look, TRACK.referenceBlend) : reference,
+    recent: blend(recent, winner.look, TRACK.recentBlend),
     unseenMs: 0,
     candidate: null,
-    others: boxesExcept(detections, winner),
+    others: othersAfter(state.others, detections, winner, dtMs),
   }
 }
 
@@ -223,7 +258,7 @@ function search(
   const unseenMs = state.unseenMs + dtMs
   const still = { ...state, velocity: { x: 0, y: 0 }, unseenMs }
   if (unseenMs < TRACK.coastMs + TRACK.reacquireSettleMs) {
-    return { ...still, candidate: null, others: boxesExcept(detections, null) }
+    return { ...still, candidate: null, others: othersAfter(state.others, detections, null, dtMs) }
   }
 
   const taken = claimed(state.others, detections, state.candidate?.box ?? null)
@@ -246,7 +281,7 @@ function search(
     bestLook >= TRACK.reacquireSimilarity &&
     bestLook - second >= TRACK.reacquireMargin
   if (!clear || best == null) {
-    return { ...still, candidate: null, others: boxesExcept(detections, null) }
+    return { ...still, candidate: null, others: othersAfter(state.others, detections, null, dtMs) }
   }
 
   const same =
@@ -258,12 +293,13 @@ function search(
       box: best.box,
       velocity: { x: 0, y: 0 },
       reference,
+      recent: best.look,
       unseenMs: 0,
       candidate: null,
-      others: boxesExcept(detections, best),
+      others: othersAfter(state.others, detections, best, dtMs),
     }
   }
-  return { ...still, candidate: { box: best.box, frames }, others: boxesExcept(detections, best) }
+  return { ...still, candidate: { box: best.box, frames }, others: othersAfter(state.others, detections, best, dtMs) }
 }
 
 /**
@@ -284,6 +320,6 @@ export function rescale(state: TrackState, factor: number): TrackState {
     velocity: { x: state.velocity.x * factor, y: state.velocity.y * factor },
     candidate:
       state.candidate == null ? null : { ...state.candidate, box: scale(state.candidate.box) },
-    others: state.others.map(scale),
+    others: state.others.map((o) => ({ ...o, box: scale(o.box) })),
   }
 }

@@ -10,9 +10,12 @@ commit**: o repositório é público.
 ## Preparar (uma vez)
 
 ```bash
-uv venv --python 3.12 tools/replay/.venv
+uv venv --python cpython-3.12-macos-aarch64 tools/replay/.venv
 uv pip install --python tools/replay/.venv/bin/python opencv-python ai-edge-litert
 ```
+
+Num Mac com Apple Silicon o Python tem de ser o nativo (`aarch64`): o
+`ai-edge-litert` não existe para o Python Intel.
 
 ## Usar
 

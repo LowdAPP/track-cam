@@ -19,6 +19,7 @@ function lostState(look: number[], at: Point): TrackState {
     box: person(at.x, at.y, look).box,
     velocity: { x: 0, y: 0 },
     reference: look,
+    recent: look,
     unseenMs: 2000,
     candidate: null,
     others: [],
@@ -53,6 +54,28 @@ test('cruzamento com colega da mesma cor: arrisca pelo movimento e não declara 
   const states = frames.map((f) => (s = step(s, f, 33)))
   expect(states.every((st) => st.status !== 'lost')).toBe(true)
   expect(center(s.box!).x).toBeGreaterThan(0.55) // manteve o que ia para a direita
+})
+
+test('segunda caixa em cima do alvo que fica sozinha: continua a seguir', () => {
+  // o detetor dá duas caixas quase iguais para o alvo e depois só a segunda
+  let s = pick(IDLE, [person(0.3, 0.5, RED)], { x: 0.3, y: 0.5 })
+  s = run(s, range(5).map(() => [person(0.3, 0.5, RED), person(0.31, 0.5, RED)]))
+  s = run(s, range(10).map(() => [person(0.31, 0.5, RED)]))
+  expect(s.status).toBe('tracking')
+})
+
+test('a cor muda aos poucos (luz, pose): continua a seguir', () => {
+  const mix = (t: number) => RED.map((v, k) => v * (1 - t) + BLUE[k]! * t)
+  let s = pick(IDLE, [person(0.3, 0.5, RED)], { x: 0.3, y: 0.5 })
+  s = run(s, range(60).map((i) => [person(0.3, 0.5, mix(i / 60))]))
+  expect(s.status).toBe('tracking')
+})
+
+test('não salta para alguém a mais de uma caixa de distância num só frame', () => {
+  let s = pick(IDLE, [person(0.3, 0.5, RED)], { x: 0.3, y: 0.5 })
+  s = step(s, [person(0.5, 0.5, RED)], 33)
+  expect(s.status).toBe('coasting')
+  expect(center(s.box!).x).toBeCloseTo(0.3, 1)
 })
 
 test('tapado por instantes: prevê e retoma', () => {
@@ -124,7 +147,7 @@ test('rescale: ao mudar o zoom, as posições afastam-se ou aproximam-se do cent
   expect(center(s.box!).x).toBeCloseTo(0.7)
   expect(s.box!.w).toBeCloseTo(0.1)
   expect(s.box!.h).toBeCloseTo(0.4)
-  expect(center(s.others[0]!).x).toBeCloseTo(0.1)
+  expect(center(s.others[0]!.box).x).toBeCloseTo(0.1)
   expect(rescale(IDLE, 2)).toBe(IDLE)
   expect(rescale(s, 1)).toBe(s)
 })
