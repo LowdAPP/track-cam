@@ -74,6 +74,19 @@ teste em `App.tsx` é para deitar fora.
    de vez em quando e o dono corrige com um toque. Só declara o jogador
    perdido quando não tem candidato plausível (saiu da imagem, ficou tapado
    tempo demais, ou só restam pessoas de aspeto claramente diferente).
+   Para isso a leitura da imagem tem de melhorar em dois pontos, ambos
+   obrigatórios na base:
+   - **Mais detalhe onde interessa.** Hoje a imagem inteira é esmagada para
+     320×320. Com um alvo escolhido, a app analisa também um recorte à volta
+     da posição prevista do jogador, sem deformar, para o ver com mais pixels.
+     A imagem inteira continua a ser analisada para mostrar as outras pessoas
+     e para reencontrar o alvo.
+   - **Usar o tempo.** O seguimento cruza as deteções de imagens seguidas
+     (posição e velocidade previstas), em vez de escolher a caixa mais
+     próxima em cada imagem.
+
+   Se isto não couber em 30 fps durante a gravação, o modelo passa a correr
+   pelo Core ML em vez do processador.
 5. **Jogador perdido:** aviso bem visível no ecrã, o Osmo para de rodar e o
    zoom abre para 1x. Se a app reencontrar o jogador com confiança, retoma
    sozinha e repõe o zoom anterior. Um toque em qualquer pessoa define o alvo
