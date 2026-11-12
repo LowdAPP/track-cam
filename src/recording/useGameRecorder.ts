@@ -1,5 +1,5 @@
 import { Directory, File, Paths } from 'expo-file-system'
-import { Asset, requestPermissionsAsync } from 'expo-media-library'
+import { Album, Asset, requestPermissionsAsync } from 'expo-media-library'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   type Recorder,
@@ -7,10 +7,14 @@ import {
   useVideoOutput,
 } from 'react-native-vision-camera'
 
+import { TrackCamClip } from '../../modules/trackcam-dock'
 import {
   afterSave,
   afterSegment,
   gameId,
+  GOAL_AFTER_SEC,
+  goalClip,
+  goalFileName,
   LOW_SPACE_BYTES,
   momentAt,
   SEGMENT_SECONDS,
@@ -26,6 +30,31 @@ function toPath(uri: string): string {
   return decodeURIComponent(uri.replace(/^file:\/\//, ''))
 }
 
+/** Álbum das Fotografias onde ficam os vídeos dos golos. */
+const GOALS_ALBUM = 'TrackCam Golos'
+/** Quanto tempo o aviso "Golo guardado" fica no ecrã. */
+const GOAL_NOTICE_MS = 4000
+
+function remove(path: string) {
+  try {
+    new File(`file://${path}`).delete()
+  } catch {
+    // fica na pasta da app; não é grave
+  }
+}
+
+/** Guarda nas Fotografias, no álbum dos golos. Sem acesso aos álbuns, guarda fora dele. */
+async function saveGoal(path: string) {
+  const uri = `file://${path}`
+  try {
+    const album = await Album.get(GOALS_ALBUM)
+    if (album != null) await Asset.create(uri, album)
+    else await Album.create(GOALS_ALBUM, [uri])
+  } catch {
+    await Asset.create(uri)
+  }
+}
+
 interface Session {
   game: string
   dir: Directory
@@ -34,6 +63,17 @@ interface Session {
   userStopped: boolean
   current: Recorder | null
   prepared: Recorder | null
+  /** golo à espera de ser cortado quando o vídeo atual fechar */
+  pendingGoal: { tapMs: number; index: number } | null
+  goals: number
+  /** a app está a fechar o vídeo atual para cortar um golo */
+  cutting: boolean
+  /** quando se pediu para fechar o vídeo atual */
+  endAt: number | null
+  /** vídeo anterior, guardado até o seguinte fechar: um golo pode começar nele */
+  previous: string | null
+  /** vídeos que não chegaram às Fotografias: não se apagam da app */
+  unsaved: Set<string>
 }
 
 /** Grava o jogo em vídeos seguidos de até 3 minutos e guarda-os nas Fotografias. */
@@ -44,6 +84,9 @@ export function useGameRecorder(audio: boolean) {
   const [segment, setSegment] = useState(0)
   const [notice, setNotice] = useState<string | null>(null)
   const [moments, setMoments] = useState(0)
+  const [goals, setGoals] = useState(0)
+  const [savingGoal, setSavingGoal] = useState(false)
+  const [goalSaved, setGoalSaved] = useState(false)
   const session = useRef<Session | null>(null)
   const startedAt = useRef(0)
   // o segmento seguinte arranca a partir do fim do anterior, por isso a função chama-se a si própria
@@ -57,7 +100,14 @@ export function useGameRecorder(audio: boolean) {
     return () => clearInterval(timer)
   }, [status])
 
-  const save = useCallback(async (path: string) => {
+  useEffect(() => {
+    if (!goalSaved) return
+    const timer = setTimeout(() => setGoalSaved(false), GOAL_NOTICE_MS)
+    return () => clearTimeout(timer)
+  }, [goalSaved])
+
+  /** Guarda um vídeo do jogo nas Fotografias. O ficheiro da app é apagado mais tarde. */
+  const save = useCallback(async (s: Session, path: string) => {
     let saved = false
     try {
       await Asset.create(`file://${path}`)
@@ -67,14 +117,33 @@ export function useGameRecorder(audio: boolean) {
     }
     const next = afterSave(saved, path)
     if (next.notice != null) setNotice(next.notice)
-    if (next.deleteLocal) {
-      try {
-        new File(`file://${path}`).delete()
-      } catch {
-        // fica na pasta da app; não é grave
-      }
-    }
+    if (!next.deleteLocal) s.unsaved.add(path)
   }, [])
+
+  /** Corta o golo do fim dos vídeos dados e guarda-o nas Fotografias. */
+  const cutGoal = useCallback(
+    async (s: Session, goal: { tapMs: number; index: number }, paths: string[], endMs: number) => {
+      const output = toPath(new File(s.dir, goalFileName(s.game, goal.index)).uri)
+      const clip = goalClip(goal.tapMs, endMs)
+      try {
+        const result = await TrackCamClip.makeClip(paths, clip.fromEndSec, clip.durationSec, output)
+        if (!result.ok) throw new Error(result.error ?? 'o corte falhou')
+        await saveGoal(output)
+        remove(output)
+        if (session.current === s || s.userStopped) {
+          setGoals((n) => n + 1)
+          setGoalSaved(true)
+        }
+      } catch (e) {
+        setNotice(
+          `Não foi possível guardar o vídeo do golo (${String(e)}). O golo está no vídeo do jogo.`,
+        )
+      } finally {
+        setSavingGoal(false)
+      }
+    },
+    [],
+  )
 
   const startSegment = useCallback(
     async (s: Session, index: number) => {
@@ -83,7 +152,15 @@ export function useGameRecorder(audio: boolean) {
 
       const finished = (path: string, reason: SegmentEnd) => {
         if (session.current !== s) return
-        const next = afterSegment(reason, s.userStopped)
+        const endMs = s.endAt ?? Date.now()
+        const goal = s.pendingGoal
+        const before = s.previous
+        const next = afterSegment(reason, s.userStopped, s.cutting)
+        const last = next.kind !== 'start-next'
+        s.endAt = null
+        s.pendingGoal = null
+        s.cutting = false
+        s.previous = last ? null : path
         if (next.kind === 'start-next') {
           startSegmentRef.current(s, index + 1).catch((e) => {
             session.current = null
@@ -95,7 +172,15 @@ export function useGameRecorder(audio: boolean) {
           setStatus(next.kind === 'finish' ? 'idle' : 'interrupted')
           if (next.kind === 'interrupted') setNotice(next.message)
         }
-        save(path)
+        // O golo primeiro, para ficar pronto a partilhar; só depois se apagam os ficheiros da app.
+        void (async () => {
+          if (goal != null) {
+            await cutGoal(s, goal, before != null ? [before, path] : [path], endMs)
+          }
+          await save(s, path)
+          if (before != null && !s.unsaved.has(before)) remove(before)
+          if (last && !s.unsaved.has(path)) remove(path)
+        })()
       }
 
       const recorder = s.prepared ?? (await videoOutput.createRecorder(settings(index)))
@@ -116,7 +201,7 @@ export function useGameRecorder(audio: boolean) {
         s.prepared = null
       }
     },
-    [save, videoOutput],
+    [cutGoal, save, videoOutput],
   )
   useEffect(() => {
     startSegmentRef.current = startSegment
@@ -127,7 +212,9 @@ export function useGameRecorder(audio: boolean) {
     setNotice(
       audio ? null : 'A gravar sem som: falta a permissão do microfone (Definições → TrackCam).',
     )
-    const library = await requestPermissionsAsync(true)
+    // Acesso completo, para os golos irem para um álbum próprio; se for recusado, basta poder guardar.
+    let library = await requestPermissionsAsync(false)
+    if (!library.granted) library = await requestPermissionsAsync(true)
     if (!library.granted) {
       setNotice('Sem permissão para guardar nas Fotografias. Ative-a nas Definições.')
       return
@@ -148,11 +235,20 @@ export function useGameRecorder(audio: boolean) {
       userStopped: false,
       current: null,
       prepared: null,
+      pendingGoal: null,
+      goals: 0,
+      cutting: false,
+      endAt: null,
+      previous: null,
+      unsaved: new Set(),
     }
     session.current = s
     startedAt.current = Date.now()
     setElapsedSec(0)
     setMoments(0)
+    setGoals(0)
+    setSavingGoal(false)
+    setGoalSaved(false)
     try {
       await startSegment(s, 0)
     } catch (e) {
@@ -166,6 +262,7 @@ export function useGameRecorder(audio: boolean) {
     const s = session.current
     if (s == null || s.current == null) return
     s.userStopped = true
+    s.endAt = Date.now()
     try {
       await s.current.stopRecording()
     } catch (e) {
@@ -187,9 +284,67 @@ export function useGameRecorder(audio: boolean) {
     }
   }, [])
 
+  /** Golo: fecha o vídeo atual daqui a uns segundos e corta-lhe o fim para um vídeo à parte. */
+  const goal = useCallback(() => {
+    const s = session.current
+    if (s == null || s.current == null || s.userStopped || s.pendingGoal != null) return
+    const tapMs = Date.now()
+    s.pendingGoal = { tapMs, index: s.goals++ }
+    setSavingGoal(true)
+    s.moments.push({ kind: 'golo', ...momentAt(s.segmentStarts, tapMs) })
+    try {
+      new File(s.dir, 'momentos.json').write(JSON.stringify(s.moments, null, 2))
+    } catch {
+      // o vídeo do golo não depende desta lista
+    }
+    setTimeout(() => {
+      // se o vídeo já fechou entretanto (3 minutos, ou parou-se a gravação), o golo já foi cortado
+      if (session.current !== s || s.pendingGoal?.tapMs !== tapMs) return
+      const recorder = s.current
+      if (s.userStopped || recorder == null) return
+      s.cutting = true
+      s.endAt = Date.now()
+      recorder.stopRecording().catch((e: unknown) => {
+        s.cutting = false
+        s.endAt = null
+        s.pendingGoal = null
+        setSavingGoal(false)
+        setNotice(`Não foi possível cortar o golo: ${String(e)}. O golo está no vídeo do jogo.`)
+      })
+    }, GOAL_AFTER_SEC * 1000)
+  }, [])
+
   return useMemo(
-    () => ({ videoOutput, status, elapsedSec, segment, notice, moments, start, stop, mark }),
-    [videoOutput, status, elapsedSec, segment, notice, moments, start, stop, mark],
+    () => ({
+      videoOutput,
+      status,
+      elapsedSec,
+      segment,
+      notice,
+      moments,
+      goals,
+      savingGoal,
+      goalSaved,
+      start,
+      stop,
+      mark,
+      goal,
+    }),
+    [
+      videoOutput,
+      status,
+      elapsedSec,
+      segment,
+      notice,
+      moments,
+      goals,
+      savingGoal,
+      goalSaved,
+      start,
+      stop,
+      mark,
+      goal,
+    ],
   )
 }
 

@@ -52,6 +52,9 @@ export function StatusBanner({ dock, view, recorder, problem, ready }: Props) {
           {hint}
         </Text>
       )}
+      {recorder.goalSaved && (
+        <Text style={[styles.pill, styles.ok]}>Golo guardado nas Fotografias</Text>
+      )}
       {recorder.notice != null && <Text style={[styles.pill, styles.warn]}>{recorder.notice}</Text>}
       <Text style={styles.diagnostics}>{diagnostics}</Text>
     </View>
@@ -59,7 +62,7 @@ export function StatusBanner({ dock, view, recorder, problem, ready }: Props) {
 }
 
 const styles = StyleSheet.create({
-  root: { position: 'absolute', left: 16, top: 12, right: 96, gap: 6, alignItems: 'flex-start' },
+  root: { position: 'absolute', left: 16, top: 12, right: 120, gap: 6, alignItems: 'flex-start' },
   row: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
   pill: {
     color: '#fff',
@@ -73,6 +76,7 @@ const styles = StyleSheet.create({
   hint: { fontSize: 15, fontWeight: '600' },
   rec: { backgroundColor: '#c0392b', fontVariant: ['tabular-nums'] },
   warn: { backgroundColor: '#c0392b' },
+  ok: { backgroundColor: '#2e9d48' },
   diagnostics: {
     color: 'rgba(255,255,255,0.85)',
     fontSize: 11,

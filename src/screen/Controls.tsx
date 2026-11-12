@@ -24,6 +24,18 @@ export function Controls({ view, recorder, onZoom, onDrop }: Props) {
           <View style={recording ? styles.recordStop : styles.recordDot} />
         </Pressable>
         {recording && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Golo: guardar o vídeo do golo"
+            disabled={recorder.savingGoal}
+            onPress={recorder.goal}
+            style={[styles.goal, recorder.savingGoal && styles.goalBusy]}
+          >
+            <Text style={styles.goalText}>{recorder.savingGoal ? 'A guardar…' : 'GOLO'}</Text>
+            {recorder.goals > 0 && <Text style={styles.goalCount}>{recorder.goals}</Text>}
+          </Pressable>
+        )}
+        {recording && (
           <Pressable accessibilityRole="button" onPress={recorder.mark} style={styles.button}>
             <Text style={styles.buttonText}>Marcar{'\n'}momento</Text>
             {recorder.moments > 0 && <Text style={styles.count}>{recorder.moments}</Text>}
@@ -61,7 +73,7 @@ const styles = StyleSheet.create({
     right: 16,
     top: 0,
     bottom: 0,
-    width: 72,
+    width: 88,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 14,
@@ -77,10 +89,23 @@ const styles = StyleSheet.create({
   },
   recordDot: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#e53935' },
   recordStop: { width: 26, height: 26, borderRadius: 5, backgroundColor: '#e53935' },
+  goal: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#2e9d48',
+    borderWidth: 3,
+    borderColor: '#fff',
+  },
+  goalBusy: { backgroundColor: 'rgba(0,0,0,0.6)' },
+  goalText: { color: '#fff', fontSize: 16, fontWeight: '800', textAlign: 'center' },
+  goalCount: { color: '#fff', fontSize: 13, fontWeight: '600', fontVariant: ['tabular-nums'] },
   bottom: {
     position: 'absolute',
     left: 16,
-    right: 104,
+    right: 120,
     bottom: 14,
     flexDirection: 'row',
     alignItems: 'center',

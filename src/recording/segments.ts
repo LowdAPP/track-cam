@@ -16,7 +16,33 @@ export function segmentFileName(game: string, index: number): string {
   return `${game}_parte-${two(index + 1)}.mov`
 }
 
+/** Quanto do jogo fica no vídeo de um golo, antes e depois do toque no botão. */
+export const GOAL_BEFORE_SEC = 12
+export const GOAL_AFTER_SEC = 5
+
+export function goalFileName(game: string, index: number): string {
+  return `${game}_golo-${two(index + 1)}.mp4`
+}
+
+export interface GoalClip {
+  /** onde o corte começa, em segundos a contar do fim do vídeo */
+  fromEndSec: number
+  durationSec: number
+}
+
+/** O corte de um golo, sabendo quando se tocou no botão e quando o vídeo acabou. */
+export function goalClip(tapMs: number, endMs: number): GoalClip {
+  const afterSec = Math.max(0, (endMs - tapMs) / 1000)
+  return {
+    fromEndSec: GOAL_BEFORE_SEC + afterSec,
+    durationSec: GOAL_BEFORE_SEC + Math.min(afterSec, GOAL_AFTER_SEC),
+  }
+}
+
 export interface Moment {
+  /** só nos golos; os outros momentos não têm */
+  kind?: 'golo'
+
   /** índice do vídeo (parte) em que o momento caiu */
   segment: number
   /** segundos desde o início desse vídeo */
@@ -46,10 +72,21 @@ export type AfterSegment =
   | { kind: 'finish' }
   | { kind: 'interrupted'; message: string }
 
-/** O que fazer quando um vídeo termina. Depois de uma interrupção a app não retoma sozinha. */
-export function afterSegment(reason: SegmentEnd, userStopped: boolean): AfterSegment {
+/**
+ * O que fazer quando um vídeo termina. Depois de uma interrupção a app não retoma sozinha.
+ * `cutForGoal`: foi a app que fechou o vídeo, para cortar um golo.
+ */
+export function afterSegment(
+  reason: SegmentEnd,
+  userStopped: boolean,
+  cutForGoal = false,
+): AfterSegment {
   if (userStopped) return { kind: 'finish' }
-  if (reason === 'max-duration-reached' || reason === 'max-file-size-reached') {
+  if (
+    reason === 'max-duration-reached' ||
+    reason === 'max-file-size-reached' ||
+    (reason === 'stopped' && cutForGoal)
+  ) {
     return { kind: 'start-next' }
   }
   return {

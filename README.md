@@ -29,6 +29,10 @@ centro, e um botão marca os momentos a cortar mais tarde.
   começa a rodar.
 - **1x, 2x, 3x** (em baixo): zoom.
 - **Botão vermelho** (à direita): começa e para a gravação.
+- **GOLO** (aparece ao gravar): guarda um vídeo à parte com os 12 segundos antes
+  do toque e os 5 a seguir, nas Fotografias, álbum **TrackCam Golos**, pronto a
+  partilhar. O jogo continua a gravar; para cortar, a app fecha a parte atual e
+  abre a seguinte. Ainda não foi testado num iPhone.
 - **Marcar momento** (aparece ao gravar): regista o instante, para cortar depois.
 - **Largar alvo**: deixa de seguir e o Osmo fica parado.
 - Se aparecer **"Jogador perdido"**, o Osmo para e o zoom abre para 1x. A app

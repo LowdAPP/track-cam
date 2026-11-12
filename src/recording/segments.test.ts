@@ -1,4 +1,12 @@
-import { afterSave, afterSegment, gameId, momentAt, segmentFileName } from './segments'
+import {
+  afterSave,
+  afterSegment,
+  gameId,
+  goalClip,
+  goalFileName,
+  momentAt,
+  segmentFileName,
+} from './segments'
 
 test('nomes', () => {
   const g = gameId(new Date(2026, 10, 11, 18, 30, 5))
@@ -33,4 +41,28 @@ test('só apaga o ficheiro local depois de guardado', () => {
   const failed = afterSave(false, '/x/a.mov')
   expect(failed.deleteLocal).toBe(false)
   expect(failed.notice).toContain('a.mov')
+})
+
+test('nome do vídeo de um golo', () => {
+  expect(goalFileName('2026-11-11_18-30-05', 0)).toBe('2026-11-11_18-30-05_golo-01.mp4')
+})
+
+test('golo: 12 s antes do toque e 5 s depois', () => {
+  // o vídeo acabou 5 s depois do toque
+  expect(goalClip(100_000, 105_000)).toEqual({ fromEndSec: 17, durationSec: 17 })
+})
+
+test('golo: se a gravação parou antes dos 5 s, fica o que houver', () => {
+  expect(goalClip(100_000, 102_000)).toEqual({ fromEndSec: 14, durationSec: 14 })
+  expect(goalClip(100_000, 99_000)).toEqual({ fromEndSec: 12, durationSec: 12 })
+})
+
+test('golo: se o vídeo acabou mais tarde, o corte não passa dos 5 s depois do toque', () => {
+  expect(goalClip(100_000, 108_000)).toEqual({ fromEndSec: 20, durationSec: 17 })
+})
+
+test('fechar um vídeo para cortar um golo não interrompe o jogo', () => {
+  expect(afterSegment('stopped', false, true)).toEqual({ kind: 'start-next' })
+  expect(afterSegment('stopped', true, true)).toEqual({ kind: 'finish' })
+  expect(afterSegment('error', false, true).kind).toBe('interrupted')
 })

@@ -1,6 +1,6 @@
 {
   "platforms": ["apple"],
   "apple": {
-    "modules": ["TrackCamDockModule"]
+    "modules": ["TrackCamDockModule", "TrackCamClipModule"]
   }
 }
