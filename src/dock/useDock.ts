@@ -45,7 +45,12 @@ export function useDock(): Dock {
       if (!connectedRef.current || busy.current) return
       busy.current = true
       const r = toDockRect(box)
-      DockModule.aim(r.x, r.y, r.w, r.h, intrinsics, refW, refH)
+      // Sem a matriz da câmara, como no teste que funcionou com o Osmo Mobile 8: com ela
+      // a app fechava ao começar a seguir (suspeita por confirmar; ver README).
+      void intrinsics
+      void refW
+      void refH
+      DockModule.aim(r.x, r.y, r.w, r.h, null, 0, 0)
         .then(note)
         .finally(() => {
           busy.current = false
