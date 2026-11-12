@@ -126,7 +126,13 @@ function GameScreen({ audio }: { audio: boolean }) {
         problem={problem}
         ready={detection.ready}
       />
-      <Controls view={follow.view} recorder={recorder} onZoom={follow.setZoom} onDrop={follow.drop} />
+      <Controls
+        view={follow.view}
+        recorder={recorder}
+        onZoom={follow.setZoom}
+        onMode={follow.setMode}
+        onDrop={follow.drop}
+      />
     </View>
   )
 }

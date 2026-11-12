@@ -20,7 +20,9 @@ export function StatusBanner({ dock, view, recorder, problem, ready }: Props) {
   let hint: string | null = null
   if (problem != null) hint = problem
   else if (!ready) hint = 'A carregar…'
-  else if (view.status === 'lost') hint = 'Jogador perdido · a procurar… Toque nele para retomar'
+  else if (view.mode === 'play') {
+    if (view.status === 'lost') hint = 'Sem jogadores à vista · a câmara fica parada'
+  } else if (view.status === 'lost') hint = 'Jogador perdido · a procurar… Toque nele para retomar'
   else if (view.status === 'idle') hint = 'Toque no jogador que quer seguir'
 
   const frame = view.frame

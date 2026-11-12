@@ -29,6 +29,10 @@ centro, e um botão marca os momentos a cortar mais tarde.
   começa a rodar.
 - **1x, 2x, 3x** (em baixo): zoom.
 - **Botão vermelho** (à direita): começa e para a gravação.
+- **Jogador / Jogada**: em *Jogador* segue quem se tocar; em *Jogada* aponta
+  para o meio de toda a gente à vista e move-se devagar (não é preciso tocar em
+  ninguém). É um atalho enquanto não há deteção da bola: conta também bancos e
+  árbitros que estejam na imagem. Ainda não foi testado num iPhone.
 - **GOLO** (aparece ao gravar): guarda um vídeo à parte com os 12 segundos antes
   do toque e os 5 a seguir, nas Fotografias, álbum **TrackCam Golos**, pronto a
   partilhar. O jogo continua a gravar; para cortar, a app fecha a parte atual e

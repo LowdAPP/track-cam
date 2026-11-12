@@ -1,16 +1,22 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 
 import type { GameRecorder } from '../recording/useGameRecorder'
-import { ZOOM_STEPS, type FollowView } from './useFollow'
+import { ZOOM_STEPS, type FollowMode, type FollowView } from './useFollow'
+
+const MODES: { mode: FollowMode; label: string }[] = [
+  { mode: 'player', label: 'Jogador' },
+  { mode: 'play', label: 'Jogada' },
+]
 
 interface Props {
   view: FollowView
   recorder: GameRecorder
   onZoom: (zoom: number) => void
+  onMode: (mode: FollowMode) => void
   onDrop: () => void
 }
 
-export function Controls({ view, recorder, onZoom, onDrop }: Props) {
+export function Controls({ view, recorder, onZoom, onMode, onDrop }: Props) {
   const recording = recorder.status === 'recording'
   return (
     <>
@@ -45,6 +51,22 @@ export function Controls({ view, recorder, onZoom, onDrop }: Props) {
 
       <View style={styles.bottom}>
         <View style={styles.zoom}>
+          {MODES.map((m) => (
+            <Pressable
+              key={m.mode}
+              accessibilityRole="button"
+              accessibilityLabel={`Seguir ${m.label.toLowerCase()}`}
+              accessibilityState={{ selected: view.mode === m.mode }}
+              onPress={() => onMode(m.mode)}
+              style={[styles.zoomStep, styles.modeStep, view.mode === m.mode && styles.zoomOn]}
+            >
+              <Text style={[styles.zoomText, view.mode === m.mode && styles.zoomTextOn]}>
+                {m.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        <View style={styles.zoom}>
           {ZOOM_STEPS.map((z) => (
             <Pressable
               key={z}
@@ -57,7 +79,7 @@ export function Controls({ view, recorder, onZoom, onDrop }: Props) {
             </Pressable>
           ))}
         </View>
-        {view.status !== 'idle' && (
+        {view.mode === 'player' && view.status !== 'idle' && (
           <Pressable accessibilityRole="button" onPress={onDrop} style={styles.button}>
             <Text style={styles.buttonText}>Largar alvo</Text>
           </Pressable>
@@ -121,6 +143,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'rgba(0,0,0,0.6)',
   },
+  modeStep: { paddingHorizontal: 14 },
   zoomOn: { backgroundColor: '#ffd54a' },
   zoomText: { color: '#fff', fontSize: 14, fontWeight: '500' },
   zoomTextOn: { color: '#111', fontWeight: '700' },

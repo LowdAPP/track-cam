@@ -21,7 +21,7 @@ export function PeopleOverlay({ view, mapper }: Props) {
       {view.target != null && (
         <View style={[styles.target, targetStyle(view.status), mapper.boxToView(view.target)]}>
           <Text style={[styles.tag, view.status === 'lost' && styles.tagLost]}>
-            {label(view.status)}
+            {view.mode === 'play' ? 'jogada' : label(view.status)}
           </Text>
         </View>
       )}

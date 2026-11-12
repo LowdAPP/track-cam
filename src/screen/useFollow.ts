@@ -4,6 +4,7 @@ import { createSynchronizable } from 'react-native-worklets'
 import type { FrameResult } from '../detection/useDetection'
 import type { Dock } from '../dock/useDock'
 import type { Box, Point } from '../tracking/geometry'
+import { PLAY_START, playStep, type PlayState } from '../tracking/play'
 import {
   drop as dropTarget,
   IDLE,
@@ -19,7 +20,11 @@ import { decide, type Command } from './decide'
 
 export const ZOOM_STEPS = [1, 2, 3] as const
 
+/** O que a câmara segue: um jogador escolhido, ou o conjunto dos jogadores. */
+export type FollowMode = 'player' | 'play'
+
 export interface FollowView {
+  mode: FollowMode
   status: TrackStatus
   people: PersonDetection[]
   target: Box | null
@@ -41,6 +46,8 @@ export function useFollow(dock: Dock) {
     dockRef.current = dock
   }, [dock])
   const state = useRef<TrackState>(IDLE)
+  const mode = useRef<FollowMode>('player')
+  const play = useRef<PlayState>(PLAY_START)
   const people = useRef<PersonDetection[]>([])
   const frame = useRef<FrameResult | null>(null)
   const chosenZoom = useRef(1)
@@ -49,6 +56,7 @@ export function useFollow(dock: Dock) {
   const lastCommand = useRef<Command['kind']>('none')
   const fps = useRef(0)
   const [view, setView] = useState<FollowView>({
+    mode: 'player',
     status: 'idle',
     people: [],
     target: null,
@@ -82,9 +90,41 @@ export function useFollow(dock: Dock) {
       lastCommand.current = command.kind
 
       setView({
+        mode: 'player',
         status: settled.status,
         people: people.current,
         target: settled.box,
+        zoom: zoom.current,
+        chosenZoom: chosenZoom.current,
+        frame: frame.current,
+        fps: fps.current,
+      })
+    },
+    [focus],
+  )
+
+  /** Modo jogada: a mira é o meio dos jogadores. Não há alvo nem segundo passe de detalhe. */
+  const applyPlay = useCallback(
+    (next: PlayState) => {
+      const decision = decide(next, chosenZoom.current, zoom.current)
+      zoom.current = decision.zoom
+      play.current = next
+      focus.setBlocking(null)
+
+      const command = decision.command
+      if (command.kind === 'aim' && frame.current != null) {
+        const f = frame.current
+        dockRef.current.aim(command.box, f.intrinsics, f.frameW, f.frameH)
+      } else if (command.kind !== 'aim' && lastCommand.current === 'aim') {
+        dockRef.current.hold()
+      }
+      lastCommand.current = command.kind
+
+      setView({
+        mode: 'play',
+        status: next.status,
+        people: people.current,
+        target: next.box,
         zoom: zoom.current,
         chosenZoom: chosenZoom.current,
         frame: frame.current,
@@ -102,14 +142,16 @@ export function useFollow(dock: Dock) {
       if (dtMs > 0) fps.current = fps.current * 0.8 + (1000 / dtMs) * 0.2
       people.current = result.people
       frame.current = result
-      apply(step(state.current, result.people, dtMs))
+      if (mode.current === 'play') applyPlay(playStep(play.current, result.people, dtMs))
+      else apply(step(state.current, result.people, dtMs))
     },
-    [apply],
+    [apply, applyPlay],
   )
 
   /** `at` em coordenadas do frame (0 a 1). */
   const tap = useCallback(
     (at: Point) => {
+      if (mode.current === 'play') return
       const next = pick(state.current, people.current, at)
       if (next !== state.current) apply(next)
     },
@@ -121,13 +163,30 @@ export function useFollow(dock: Dock) {
   const setZoom = useCallback(
     (value: number) => {
       chosenZoom.current = value
-      apply(state.current)
+      if (mode.current === 'play') applyPlay(play.current)
+      else apply(state.current)
     },
-    [apply],
+    [apply, applyPlay],
+  )
+
+  /** Trocar de modo recomeça do zero: larga o jogador, ou esquece a jogada. */
+  const setMode = useCallback(
+    (value: FollowMode) => {
+      if (mode.current === value) return
+      mode.current = value
+      play.current = PLAY_START
+      if (value === 'play') {
+        state.current = IDLE
+        applyPlay(PLAY_START)
+      } else {
+        apply(dropTarget())
+      }
+    },
+    [apply, applyPlay],
   )
 
   return useMemo(
-    () => ({ view, focus, onFrame, tap, drop, setZoom }),
-    [view, focus, onFrame, tap, drop, setZoom],
+    () => ({ view, focus, onFrame, tap, drop, setZoom, setMode }),
+    [view, focus, onFrame, tap, drop, setZoom, setMode],
   )
 }

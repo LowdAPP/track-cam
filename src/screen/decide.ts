@@ -1,5 +1,5 @@
 import { center, type Box } from '../tracking/geometry'
-import type { TrackState } from '../tracking/tracker'
+import type { TrackStatus } from '../tracking/tracker'
 
 /** Até onde o centro do alvo pode ficar do centro da imagem depois de fechar o zoom. */
 const SAFE_AFTER_ZOOM = 0.35
@@ -11,7 +11,7 @@ export type Command = { kind: 'aim'; box: Box } | { kind: 'hold' } | { kind: 'no
  * `chosenZoom` é o que o dono escolheu; `currentZoom` é o que está aplicado.
  */
 export function decide(
-  state: TrackState,
+  state: { status: TrackStatus; box: Box | null },
   chosenZoom: number,
   currentZoom: number,
 ): { zoom: number; command: Command } {
