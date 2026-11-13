@@ -39,6 +39,11 @@ centro, e um botão marca os momentos a cortar mais tarde.
   abre a seguinte. Ainda não foi testado num iPhone.
 - **Marcar momento** (aparece ao gravar): regista o instante, para cortar depois.
 - **Largar alvo**: deixa de seguir e o Osmo fica parado.
+- **Relatório** (aparece quando não está a gravar): abre a partilha do iPhone
+  com um ficheiro de texto do que a app fez (toques, quando perdeu o jogador,
+  fps, o que o Osmo aceitou e recusou). O ficheiro guarda também as sessões
+  anteriores, incluindo as que acabaram com a app a fechar. Ainda não foi
+  testado num iPhone.
 - Se aparecer **"Jogador perdido"**, o Osmo para e o zoom abre para 1x. A app
   continua a procurá-lo; para retomar já, toque nele outra vez. Se trocar de
   jogador num cruzamento, toque no certo.

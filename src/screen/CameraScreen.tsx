@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { type GestureResponderEvent, Pressable, StyleSheet, Text, View } from 'react-native'
+import Constants from 'expo-constants'
+import {
+  type GestureResponderEvent,
+  Pressable,
+  Share,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native'
 import {
   Camera,
   type CameraRef,
@@ -10,6 +18,7 @@ import {
 import { type FrameResult, useDetection } from '../detection/useDetection'
 import { useDock } from '../dock/useDock'
 import { useGameRecorder } from '../recording/useGameRecorder'
+import { report, reportFileUri, startReport } from '../report/report'
 import { Controls } from './Controls'
 import { makeMapper, type Mapper } from './mapper'
 import { PeopleOverlay } from './PeopleOverlay'
@@ -97,6 +106,31 @@ function GameScreen({ audio }: { audio: boolean }) {
   const detection = useDetection({ focus: follow.focus, onResult, onError: setError })
   const recorder = useGameRecorder(audio)
 
+  // Relatório para enviar depois do treino: o que não vem do seguidor nem do Osmo.
+  useEffect(() => {
+    startReport(Constants.expoConfig?.version ?? '?')
+  }, [])
+  useEffect(() => {
+    if (error != null) report(`ERRO: ${error}`, true)
+  }, [error])
+  useEffect(() => {
+    if (detection.problem != null) report(`PROBLEMA: ${detection.problem}`, true)
+  }, [detection.problem])
+  useEffect(() => {
+    report(`GRAVAÇÃO: ${recorder.status}`, true)
+  }, [recorder.status])
+  useEffect(() => {
+    if (recorder.goals > 0) report(`GOLO ${recorder.goals}`, true)
+  }, [recorder.goals])
+  useEffect(() => {
+    if (recorder.notice != null) report(`AVISO: ${recorder.notice}`, true)
+  }, [recorder.notice])
+
+  const shareReport = useCallback(() => {
+    report('relatório partilhado')
+    Share.share({ url: reportFileUri() }).catch(() => {})
+  }, [])
+
   const onTap = (e: GestureResponderEvent) => {
     if (mapper == null) return
     try {
@@ -141,6 +175,7 @@ function GameScreen({ audio }: { audio: boolean }) {
         onZoom={follow.setZoom}
         onMode={follow.setMode}
         onDrop={follow.drop}
+        onReport={shareReport}
       />
     </View>
   )

@@ -14,9 +14,11 @@ interface Props {
   onZoom: (zoom: number) => void
   onMode: (mode: FollowMode) => void
   onDrop: () => void
+  /** enviar o relatório do que a app fez */
+  onReport: () => void
 }
 
-export function Controls({ view, recorder, onZoom, onMode, onDrop }: Props) {
+export function Controls({ view, recorder, onZoom, onMode, onDrop, onReport }: Props) {
   const recording = recorder.status === 'recording'
   return (
     <>
@@ -82,6 +84,16 @@ export function Controls({ view, recorder, onZoom, onMode, onDrop }: Props) {
         {view.mode === 'player' && view.status !== 'idle' && (
           <Pressable accessibilityRole="button" onPress={onDrop} style={styles.button}>
             <Text style={styles.buttonText}>Largar alvo</Text>
+          </Pressable>
+        )}
+        {!recording && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Enviar o relatório do que a app fez"
+            onPress={onReport}
+            style={styles.button}
+          >
+            <Text style={styles.buttonText}>Relatório</Text>
           </Pressable>
         )}
       </View>

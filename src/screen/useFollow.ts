@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createSynchronizable } from 'react-native-worklets'
 
 import type { FrameResult } from '../detection/useDetection'
-import type { Dock } from '../dock/useDock'
+import { dockStats, type Dock } from '../dock/useDock'
+import { describeBox, sampleLine } from '../report/format'
+import { report } from '../report/report'
 import type { Box, Point } from '../tracking/geometry'
 import { PLAY_START, playStep, type PlayState } from '../tracking/play'
 import {
@@ -55,6 +57,8 @@ export function useFollow(dock: Dock) {
   const lastFrameAt = useRef(0)
   const lastCommand = useRef<Command['kind']>('none')
   const fps = useRef(0)
+  const lastStatus = useRef<string>('player/idle')
+  const lastSampleAt = useRef(0)
   const [view, setView] = useState<FollowView>({
     mode: 'player',
     status: 'idle',
@@ -65,6 +69,47 @@ export function useFollow(dock: Dock) {
     frame: null,
     fps: 0,
   })
+
+  /** Relatório: cada mudança de estado, e uma linha de estado de vez em quando. */
+  const record = useCallback((m: FollowMode, status: TrackStatus, target: Box | null) => {
+    const f = frame.current
+    const d = dockRef.current
+    const line = () =>
+      sampleLine({
+        mode: m,
+        status,
+        zoom: zoom.current,
+        fps: fps.current,
+        processMs: f?.processMs ?? 0,
+        twoPasses: f?.usedCrop ?? false,
+        people: people.current.length,
+        target,
+        docked: d.connected,
+        aims: dockStats.aims,
+        refused: dockStats.refused,
+        yaw: dockStats.yaw,
+        pitch: dockStats.pitch,
+      })
+    const now = Date.now()
+    const key = `${m}/${status}`
+    if (key !== lastStatus.current) {
+      report(`MUDOU ${lastStatus.current} -> ${key} | ${line()}`)
+      if (status === 'lost') {
+        // quem estava à vista quando o perdeu: é o que permite perceber porquê
+        const seen = people.current.map((p) => describeBox(p.box)).join(' ; ')
+        report(`  à vista ao perder: ${seen || 'ninguém'}`)
+      }
+      lastStatus.current = key
+      lastSampleAt.current = now
+      return
+    }
+    // a seguir alguém: 1 linha por segundo; parado: 1 de 10 em 10 segundos
+    const every = status === 'idle' ? 10000 : 1000
+    if (now - lastSampleAt.current >= every) {
+      lastSampleAt.current = now
+      report(line())
+    }
+  }, [])
 
   const apply = useCallback(
     (next: TrackState) => {
@@ -88,6 +133,7 @@ export function useFollow(dock: Dock) {
         dockRef.current.hold()
       }
       lastCommand.current = command.kind
+      record('player', settled.status, settled.box)
 
       setView({
         mode: 'player',
@@ -100,7 +146,7 @@ export function useFollow(dock: Dock) {
         fps: fps.current,
       })
     },
-    [focus],
+    [focus, record],
   )
 
   /** Modo jogada: a mira é o meio dos jogadores. Não há alvo nem segundo passe de detalhe. */
@@ -119,6 +165,7 @@ export function useFollow(dock: Dock) {
         dockRef.current.hold()
       }
       lastCommand.current = command.kind
+      record('play', next.status, next.box)
 
       setView({
         mode: 'play',
@@ -131,7 +178,7 @@ export function useFollow(dock: Dock) {
         fps: fps.current,
       })
     },
-    [focus],
+    [focus, record],
   )
 
   const onFrame = useCallback(
@@ -153,15 +200,24 @@ export function useFollow(dock: Dock) {
     (at: Point) => {
       if (mode.current === 'play') return
       const next = pick(state.current, people.current, at)
-      if (next !== state.current) apply(next)
+      const hit = next !== state.current
+      report(
+        `TOQUE em ${at.x.toFixed(2)},${at.y.toFixed(2)}: ${hit ? `apanhou ${describeBox(next.box)}` : 'ninguém aí'} (${people.current.length} pessoas à vista)`,
+        true,
+      )
+      if (hit) apply(next)
     },
     [apply],
   )
 
-  const drop = useCallback(() => apply(dropTarget()), [apply])
+  const drop = useCallback(() => {
+    report('LARGAR ALVO')
+    apply(dropTarget())
+  }, [apply])
 
   const setZoom = useCallback(
     (value: number) => {
+      report(`ZOOM escolhido ${value}x`)
       chosenZoom.current = value
       if (mode.current === 'play') applyPlay(play.current)
       else apply(state.current)
@@ -173,6 +229,7 @@ export function useFollow(dock: Dock) {
   const setMode = useCallback(
     (value: FollowMode) => {
       if (mode.current === value) return
+      report(`MODO ${value}`)
       mode.current = value
       play.current = PLAY_START
       if (value === 'play') {
