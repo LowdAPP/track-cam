@@ -275,11 +275,18 @@ export function useGameRecorder(audio: boolean) {
 
   const stop = useCallback(async () => {
     const s = session.current
-    if (s == null || s.current == null) return
+    report('GRAVAÇÃO: toque em parar', true)
+    if (s == null || s.current == null) {
+      // O botão nunca pode ficar preso: sem gravação em curso, volta ao início.
+      report('GRAVAÇÃO: não havia vídeo em curso ao parar', true)
+      session.current = null
+      setStatus('idle')
+      setNotice('A gravação já tinha parado. Veja se o vídeo está nas Fotografias.')
+      return
+    }
     const recorder = s.current
     s.userStopped = true
     s.endAt = Date.now()
-    report('GRAVAÇÃO: pedido para parar', true)
     // No treino de 13/11 a gravação não parou: a câmara nunca avisou que o vídeo tinha
     // fechado. Se o aviso não chegar, a app fecha a gravação e tenta guardar o ficheiro.
     setTimeout(() => {
