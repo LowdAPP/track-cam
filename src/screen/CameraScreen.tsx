@@ -84,7 +84,12 @@ function GameScreen({ audio }: { audio: boolean }) {
           // a pré-visualização ainda não está pronta
         }
       }
-      onFrame(result)
+      try {
+        onFrame(result)
+      } catch (e) {
+        // um erro a seguir não pode fechar a app a meio da gravação
+        setError(String(e))
+      }
     },
     [onFrame],
   )
@@ -94,7 +99,11 @@ function GameScreen({ audio }: { audio: boolean }) {
 
   const onTap = (e: GestureResponderEvent) => {
     if (mapper == null) return
-    follow.tap(mapper.toFrame({ x: e.nativeEvent.locationX, y: e.nativeEvent.locationY }))
+    try {
+      follow.tap(mapper.toFrame({ x: e.nativeEvent.locationX, y: e.nativeEvent.locationY }))
+    } catch (err) {
+      setError(String(err))
+    }
   }
 
   let problem: string | null = null

@@ -27,6 +27,23 @@ export function useDock(): Dock {
     })
   }, [])
 
+  // Um comando para o Osmo nunca pode fechar a app: se a chamada falhar (ao ser feita
+  // ou mais tarde), o erro vai para o ecrã e o jogo continua a gravar.
+  const send = useCallback(
+    (command: () => Promise<DockResult>, done?: () => void) => {
+      const failed = (e: unknown) => setLastError(String(e))
+      try {
+        command()
+          .then(note, failed)
+          .finally(() => done?.())
+      } catch (e) {
+        failed(e)
+        done?.()
+      }
+    },
+    [note],
+  )
+
   useEffect(() => {
     const sub = DockModule.addListener('onDockState', (state) => {
       connectedRef.current = state.docked
@@ -34,11 +51,11 @@ export function useDock(): Dock {
       setName(state.docked ? (state.name ?? null) : null)
       if (state.error) setLastError(state.error)
       // Sempre que o Osmo liga (ou volta a ligar), a app assume o comando.
-      if (state.docked) DockModule.takeControl().then(note)
+      if (state.docked) send(() => DockModule.takeControl())
     })
-    DockModule.start().then(note)
+    send(() => DockModule.start())
     return () => sub.remove()
-  }, [note])
+  }, [send])
 
   const aim = useCallback(
     (box: Box, intrinsics: number[] | null, refW: number, refH: number) => {
@@ -50,19 +67,20 @@ export function useDock(): Dock {
       void intrinsics
       void refW
       void refH
-      DockModule.aim(r.x, r.y, r.w, r.h, null, 0, 0)
-        .then(note)
-        .finally(() => {
+      send(
+        () => DockModule.aim(r.x, r.y, r.w, r.h, null, 0, 0),
+        () => {
           busy.current = false
-        })
+        },
+      )
     },
-    [note],
+    [send],
   )
 
   const hold = useCallback(() => {
     if (!connectedRef.current) return
-    DockModule.hold().then(note)
-  }, [note])
+    send(() => DockModule.hold())
+  }, [send])
 
   return useMemo(
     () => ({ connected, name, lastError, aim, hold }),
