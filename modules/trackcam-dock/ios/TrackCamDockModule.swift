@@ -36,6 +36,10 @@ public class TrackCamDockModule: Module {
       }
     }
 
+    AsyncFunction("steer") { (pitch: Double, yaw: Double, promise: Promise) in
+      self.run(promise) { await $0.steer(pitch: pitch, yaw: yaw) }
+    }
+
     AsyncFunction("hold") { (promise: Promise) in
       self.run(promise) { await $0.hold() }
     }

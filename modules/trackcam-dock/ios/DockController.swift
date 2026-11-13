@@ -21,6 +21,7 @@ protocol DockControlling: AnyObject {
     x: Double, y: Double, width: Double, height: Double,
     intrinsics: [Double]?, referenceWidth: Double, referenceHeight: Double
   ) async -> DockPayload
+  func steer(pitch: Double, yaw: Double) async -> DockPayload
   func hold() async -> DockPayload
 }
 
@@ -40,6 +41,7 @@ final class DockController: DockControlling, @unchecked Sendable {
   private var current: DockAccessory?
   private var stateTask: Task<Void, Never>?
   private var motionTask: Task<Void, Never>?
+  private var steerCount = 0
 
   private var accessory: DockAccessory? {
     get { lock.withLock { current } }
@@ -76,7 +78,7 @@ final class DockController: DockControlling, @unchecked Sendable {
   func takeControl() async -> Payload {
     do {
       try await DockAccessoryManager.shared.setSystemTrackingEnabled(false)
-      return ["ok": true]
+      return ["ok": true, "systemTracking": DockAccessoryManager.shared.isSystemTrackingEnabled]
     } catch {
       return ["ok": false, "error": Self.text(error)]
     }
@@ -114,9 +116,31 @@ final class DockController: DockControlling, @unchecked Sendable {
     return await attempt { try await $0.track([observation], cameraInformation: info) }
   }
 
+  /// Comando direto: velocidade dos motores em rad/s (pitch positivo desce,
+  /// yaw positivo roda para a direita). Se não chegar outro comando em 0,4 s,
+  /// os motores param sozinhos: a câmara nunca fica a rodar sem ninguém a mandar.
+  func steer(pitch: Double, yaw: Double) async -> Payload {
+    let mine = lock.withLock { () -> Int in
+      steerCount += 1
+      return steerCount
+    }
+    let result = await attempt {
+      try await $0.setAngularVelocity(Vector3D(x: pitch, y: yaw, z: 0))
+    }
+    if pitch != 0 || yaw != 0 {
+      Task { [weak self] in
+        try? await Task.sleep(nanoseconds: 400_000_000)
+        guard let self, self.lock.withLock({ self.steerCount }) == mine else { return }
+        _ = await self.attempt { try await $0.setAngularVelocity(Vector3D()) }
+      }
+    }
+    return result
+  }
+
   /// Para os motores.
   func hold() async -> Payload {
-    await attempt { try await $0.setAngularVelocity(Vector3D()) }
+    lock.withLock { steerCount += 1 }
+    return await attempt { try await $0.setAngularVelocity(Vector3D()) }
   }
 
   // MARK: - Internos

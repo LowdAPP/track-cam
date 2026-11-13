@@ -9,6 +9,11 @@ import type { PersonDetection } from '../tracking/tracker'
 import { cropToRgb } from './crop'
 import { decodePeople, merge, MODEL_SIZE } from './model'
 
+/** O passe de detalhe só corre para alvos mais baixos do que esta fração da imagem... */
+const DETAIL_BELOW_HEIGHT = 0.25
+/** ...e só de N em N frames. */
+const DETAIL_EVERY = 2
+
 export interface FrameResult {
   people: PersonDetection[]
   /** matriz 3x3 da câmara por linhas, em píxeis do frame; null se a câmara não a entregar */
@@ -66,11 +71,19 @@ export function useDetection({ focus, onResult, onError }: Options) {
 
         // 2.º passe: um recorte à volta do alvo, sem reduzir tanto.
         let usedCrop = false
+        // Custa várias vezes o 1.º passe (medido no iPhone: de 30 para 6 imagens por
+        // segundo). Por isso só corre quando o alvo é pequeno na imagem, e uma vez sim,
+        // outra não: um alvo grande já se vê bem na imagem inteira.
         const target = focus.getDirty()
-        if (target != null) {
+        const store = globalThis as unknown as {
+          __trackCamCrop?: Uint8Array<ArrayBuffer>
+          __trackCamTurn?: number
+        }
+        const turn = (store.__trackCamTurn ?? 0) + 1
+        store.__trackCamTurn = turn
+        if (target != null && target.h < DETAIL_BELOW_HEIGHT && turn % DETAIL_EVERY === 0) {
           const planes = frame.getPlanes()
           if (planes.length >= 2) {
-            const store = globalThis as unknown as { __trackCamCrop?: Uint8Array<ArrayBuffer> }
             if (store.__trackCamCrop == null) {
               store.__trackCamCrop = new Uint8Array(new ArrayBuffer(MODEL_SIZE * MODEL_SIZE * 3))
             }

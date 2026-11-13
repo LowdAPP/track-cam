@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 
+import type { Dock } from '../dock/useDock'
 import type { GameRecorder } from '../recording/useGameRecorder'
 import { ZOOM_STEPS, type FollowMode, type FollowView } from './useFollow'
 
@@ -10,6 +11,7 @@ const MODES: { mode: FollowMode; label: string }[] = [
 
 interface Props {
   view: FollowView
+  dock: Dock
   recorder: GameRecorder
   onZoom: (zoom: number) => void
   onMode: (mode: FollowMode) => void
@@ -18,7 +20,7 @@ interface Props {
   onReport: () => void
 }
 
-export function Controls({ view, recorder, onZoom, onMode, onDrop, onReport }: Props) {
+export function Controls({ view, dock, recorder, onZoom, onMode, onDrop, onReport }: Props) {
   const recording = recorder.status === 'recording'
   return (
     <>
@@ -84,6 +86,19 @@ export function Controls({ view, recorder, onZoom, onMode, onDrop, onReport }: P
         {view.mode === 'player' && view.status !== 'idle' && (
           <Pressable accessibilityRole="button" onPress={onDrop} style={styles.button}>
             <Text style={styles.buttonText}>Largar alvo</Text>
+          </Pressable>
+        )}
+        {!recording && dock.connected && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Mudar quem comanda o Osmo: a app ou o iOS"
+            onPress={() => dock.setControl(dock.control === 'direct' ? 'dockkit' : 'direct')}
+            style={styles.button}
+          >
+            <Text style={styles.buttonText}>
+              Osmo:{'\n'}
+              {dock.control === 'direct' ? 'app' : 'iOS'}
+            </Text>
           </Pressable>
         )}
         {!recording && (

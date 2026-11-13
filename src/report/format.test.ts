@@ -23,10 +23,13 @@ test('a linha de estado diz o que o Osmo fez', () => {
     refused: 3,
     yaw: 12.4,
     pitch: -3.2,
+    control: 'direct',
+    pan: 14.2,
+    tilt: -2.6,
   }
   expect(sampleLine({ ...base, docked: true })).toBe(
     'estado player/tracking | zoom 2x | 15 fps | 61 ms (2 passes) | 7 pessoas | ' +
-      'alvo centro 0.50,0.40 tamanho 0.20x0.40 | Osmo ligado, pedidos 120 (recusados 3), motores 12° / -3°',
+      'alvo centro 0.50,0.40 tamanho 0.20x0.40 | Osmo ligado (direct), pedidos 120 (recusados 3), a pedir pan 14°/s tilt -3°/s, motores 12° / -3°',
   )
   expect(sampleLine({ ...base, docked: false })).toContain('| Osmo desligado')
 })

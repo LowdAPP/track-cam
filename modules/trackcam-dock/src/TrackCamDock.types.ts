@@ -1,5 +1,5 @@
 /** Resultado de cada pedido ao estabilizador: aceitou, ou recusou e porquê. */
-export type DockResult = { ok: boolean; error?: string }
+export type DockResult = { ok: boolean; error?: string; systemTracking?: boolean }
 
 export type DockState = {
   docked: boolean

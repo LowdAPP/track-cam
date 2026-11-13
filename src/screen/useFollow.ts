@@ -22,6 +22,11 @@ import { decide, type Command } from './decide'
 
 export const ZOOM_STEPS = [1, 2, 3] as const
 
+// Quão depressa o Osmo fecha o desvio (por segundo). A jogada é mais calma: a mira
+// dela já vem suavizada, e somar pressa a esse atraso fazia a câmara oscilar.
+const PLAYER_GAIN = 2
+const PLAY_GAIN = 1.2
+
 /** O que a câmara segue: um jogador escolhido, ou o conjunto dos jogadores. */
 export type FollowMode = 'player' | 'play'
 
@@ -89,6 +94,9 @@ export function useFollow(dock: Dock) {
         refused: dockStats.refused,
         yaw: dockStats.yaw,
         pitch: dockStats.pitch,
+        control: dockStats.control,
+        pan: dockStats.pan,
+        tilt: dockStats.tilt,
       })
     const now = Date.now()
     const key = `${m}/${status}`
@@ -124,9 +132,8 @@ export function useFollow(dock: Dock) {
       focus.setBlocking(active ? settled.box : null)
 
       const command = decision.command
-      if (command.kind === 'aim' && settled.box != null && frame.current != null) {
-        const f = frame.current
-        dockRef.current.aim(settled.box, f.intrinsics, f.frameW, f.frameH)
+      if (command.kind === 'aim' && settled.box != null) {
+        dockRef.current.aim(settled.box, zoom.current, PLAYER_GAIN)
       } else if (command.kind === 'hold' && lastCommand.current === 'aim') {
         dockRef.current.hold()
       } else if (command.kind === 'none' && lastCommand.current === 'aim') {
@@ -158,10 +165,9 @@ export function useFollow(dock: Dock) {
       focus.setBlocking(null)
 
       const command = decision.command
-      if (command.kind === 'aim' && frame.current != null) {
-        const f = frame.current
-        dockRef.current.aim(command.box, f.intrinsics, f.frameW, f.frameH)
-      } else if (command.kind !== 'aim' && lastCommand.current === 'aim') {
+      if (command.kind === 'aim') {
+        dockRef.current.aim(command.box, zoom.current, PLAY_GAIN)
+      } else if (lastCommand.current === 'aim') {
         dockRef.current.hold()
       }
       lastCommand.current = command.kind

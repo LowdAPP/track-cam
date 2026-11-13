@@ -171,6 +171,7 @@ function GameScreen({ audio }: { audio: boolean }) {
       />
       <Controls
         view={follow.view}
+        dock={dock}
         recorder={recorder}
         onZoom={follow.setZoom}
         onMode={follow.setMode}

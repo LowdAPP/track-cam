@@ -124,14 +124,16 @@ function othersAfter(
   return out
 }
 
-/** A caixa prevista está encostada a uma borda e a mover-se para fora dela? */
+/**
+ * O alvo está a sair da imagem? Conta o centro da caixa prevista, não a borda dela:
+ * um jogador perto da câmara enche a imagem de cima a baixo e toca nas bordas sem
+ * estar a sair (era assim que se perdia logo, medido no iPhone).
+ */
 function leaving(predicted: Box, v: Point): boolean {
   const m = TRACK.edgeMargin
+  const c = center(predicted)
   return (
-    (predicted.x < m && v.x < 0) ||
-    (predicted.x + predicted.w > 1 - m && v.x > 0) ||
-    (predicted.y < m && v.y < 0) ||
-    (predicted.y + predicted.h > 1 - m && v.y > 0)
+    (c.x < m && v.x < 0) || (c.x > 1 - m && v.x > 0) || (c.y < m && v.y < 0) || (c.y > 1 - m && v.y > 0)
   )
 }
 

@@ -3,16 +3,26 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import DockModule, { type DockResult } from '../../modules/trackcam-dock'
 import { report } from '../report/report'
 import { toDockRect, type Box } from '../tracking/geometry'
+import { steerVelocity } from './steer'
 
 export interface Dock {
   connected: boolean
   name: string | null
   lastError: string | null
   /** Aponta o Osmo para a caixa. Descarta o pedido se o anterior ainda não respondeu. */
-  aim(box: Box, intrinsics: number[] | null, refW: number, refH: number): void
+  aim(box: Box, zoom: number, gain: number): void
   /** Para os motores. */
   hold(): void
+  control: DockControl
+  setControl(control: DockControl): void
 }
+
+/**
+ * Quem centra o alvo. 'direct': a app manda a velocidade dos motores e a mira é o
+ * centro da caixa. 'dockkit': a app entrega a caixa ao iOS e é ele que enquadra
+ * (no teste em casa subia para a cabeça e oscilava).
+ */
+export type DockControl = 'direct' | 'dockkit'
 
 /**
  * Contas para o relatório. Há um só Osmo, por isso é um objeto único que vai
@@ -26,7 +36,11 @@ export const dockStats: {
   /** posição dos motores em graus; null enquanto o Osmo não a disser */
   yaw: number | null
   pitch: number | null
-} = { aims: 0, refused: 0, yaw: null, pitch: null }
+  control: DockControl
+  /** última velocidade pedida aos motores, em graus por segundo (só no comando direto) */
+  pan: number
+  tilt: number
+} = { aims: 0, refused: 0, yaw: null, pitch: null, control: 'direct', pan: 0, tilt: 0 }
 
 export function useDock(): Dock {
   const [connected, setConnected] = useState(false)
@@ -36,6 +50,8 @@ export function useDock(): Dock {
   const busy = useRef(false)
   const lastAimAt = useRef(0)
   const burst = useRef(0)
+  const [control, setControlState] = useState<DockControl>('direct')
+  const controlRef = useRef<DockControl>('direct')
 
   const note = useCallback((result: DockResult) => {
     setLastError((prev) => {
@@ -73,7 +89,14 @@ export function useDock(): Dock {
       setName(state.docked ? (state.name ?? null) : null)
       if (state.error) setLastError(state.error)
       // Sempre que o Osmo liga (ou volta a ligar), a app assume o comando.
-      if (state.docked) send(() => DockModule.takeControl())
+      if (state.docked) {
+        send(() =>
+          DockModule.takeControl().then((result) => {
+            report(`Osmo: comando assumido: ${JSON.stringify(result)}`, true)
+            return result
+          }),
+        )
+      }
     })
     const motion = DockModule.addListener('onDockMotion', (m) => {
       if (m.yaw != null) dockStats.yaw = m.yaw
@@ -87,15 +110,9 @@ export function useDock(): Dock {
   }, [send])
 
   const aim = useCallback(
-    (box: Box, intrinsics: number[] | null, refW: number, refH: number) => {
+    (box: Box, zoom: number, gain: number) => {
       if (!connectedRef.current || busy.current) return
       busy.current = true
-      const r = toDockRect(box)
-      // Sem a matriz da câmara, como no teste que funcionou com o Osmo Mobile 8: com ela
-      // a app fechava ao começar a seguir (suspeita por confirmar; ver README).
-      void intrinsics
-      void refW
-      void refH
       // Os primeiros pedidos de cada vez que começa a apontar ficam logo escritos no
       // relatório: se a app fechar aqui, fica a saber-se em que pedido foi.
       const now = Date.now()
@@ -104,13 +121,26 @@ export function useDock(): Dock {
       const n = burst.current
       const loud = n <= 3
       dockStats.aims++
-      if (loud) {
+
+      let command: () => Promise<DockResult>
+      let what: string
+      if (controlRef.current === 'direct') {
+        const v = steerVelocity(box, zoom, gain)
+        dockStats.pan = (v.yaw * 180) / Math.PI
+        dockStats.tilt = (v.pitch * 180) / Math.PI
+        what = `motores pan ${dockStats.pan.toFixed(1)}°/s tilt ${dockStats.tilt.toFixed(1)}°/s`
+        command = () => DockModule.steer(v.pitch, v.yaw)
+      } else {
+        // Sem a matriz da câmara, como no teste que funcionou com o Osmo Mobile 8.
+        const r = toDockRect(box)
         const f = (v: number) => v.toFixed(3)
-        report(`Osmo: pedido ${n} enviado (x ${f(r.x)} y ${f(r.y)} l ${f(r.w)} a ${f(r.h)})`, true)
+        what = `caixa x ${f(r.x)} y ${f(r.y)} l ${f(r.w)} a ${f(r.h)}`
+        command = () => DockModule.aim(r.x, r.y, r.w, r.h, null, 0, 0)
       }
+      if (loud) report(`Osmo: pedido ${n} enviado (${what})`, true)
       send(
         () =>
-          DockModule.aim(r.x, r.y, r.w, r.h, null, 0, 0).then((result) => {
+          command().then((result) => {
             if (!result.ok) dockStats.refused++
             if (loud) report(`Osmo: pedido ${n} ${result.ok ? 'aceite' : `recusado: ${result.error}`}`, true)
             return result
@@ -125,11 +155,24 @@ export function useDock(): Dock {
 
   const hold = useCallback(() => {
     if (!connectedRef.current) return
+    dockStats.pan = 0
+    dockStats.tilt = 0
     send(() => DockModule.hold())
   }, [send])
 
+  const setControl = useCallback(
+    (value: DockControl) => {
+      report(`Osmo: comando ${value}`, true)
+      controlRef.current = value
+      dockStats.control = value
+      setControlState(value)
+      if (connectedRef.current) send(() => DockModule.hold())
+    },
+    [send],
+  )
+
   return useMemo(
-    () => ({ connected, name, lastError, aim, hold }),
-    [connected, name, lastError, aim, hold],
+    () => ({ connected, name, lastError, aim, hold, control, setControl }),
+    [connected, name, lastError, aim, hold, control, setControl],
   )
 }

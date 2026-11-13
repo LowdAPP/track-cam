@@ -35,7 +35,7 @@ export const TRACK = {
   mergedIou: 0.4,
   // uma pessoa que o detetor falha por instantes continua a contar como já estando à vista
   otherMemoryMs: 400,
-  // caixa prevista a menos disto de uma borda, a mover-se para fora = a sair da imagem
+  // centro da caixa prevista a menos disto de uma borda, a mover-se para fora = a sair da imagem
   edgeMargin: 0.02,
   // nesse caso só conta quem estiver mesmo em cima da previsão
   edgeGate: 0.05,

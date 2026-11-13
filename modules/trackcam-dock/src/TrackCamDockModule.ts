@@ -20,6 +20,8 @@ declare class TrackCamDockModule extends NativeModule<TrackCamDockModuleEvents> 
     referenceWidth: number,
     referenceHeight: number,
   ): Promise<DockResult>
+  /** Velocidade dos motores em rad/s: pitch positivo desce, yaw positivo roda para a direita. */
+  steer(pitch: number, yaw: number): Promise<DockResult>
   /** Para os motores. */
   hold(): Promise<DockResult>
 }

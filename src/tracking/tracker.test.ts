@@ -103,6 +103,20 @@ test('sai pela borda: perdido de imediato, sem saltar para quem está perto da b
   expect(s.status).toBe('lost')
 })
 
+test('jogador perto da câmara, a tocar nas bordas de cima a baixo: não é dado como a sair', () => {
+  const big = (x: number, y: number): PersonDetection => ({
+    box: { x: x - 0.1, y: y - 0.45, w: 0.2, h: 0.9 },
+    score: 0.9,
+    look: RED,
+  })
+  let s = pick(IDLE, [big(0.5, 0.5)], { x: 0.5, y: 0.5 })
+  // a câmara sobe: ele desce na imagem e a caixa passa da borda de baixo...
+  s = run(s, range(6).map((i) => [big(0.5, 0.5 + i * 0.02)]))
+  // ...e depois a câmara corrige de repente
+  s = step(s, [big(0.5, 0.5)], 165)
+  expect(s.status).toBe('tracking')
+})
+
 test('perdido: quem já estava à vista é ignorado, mas o alvo que reaparece é retomado', () => {
   let s = pick(IDLE, [person(0.5, 0.5, RED), person(0.2, 0.5, RED)], { x: 0.5, y: 0.5 })
   s = run(s, range(70).map(() => [person(0.2, 0.5, RED)])) // o alvo desaparece 2,3 s

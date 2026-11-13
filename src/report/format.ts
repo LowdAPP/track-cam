@@ -28,12 +28,18 @@ export interface Sample {
   refused: number
   yaw: number | null
   pitch: number | null
+  /** quem centra o alvo: a app ('direct') ou o iOS ('dockkit') */
+  control: string
+  /** última velocidade pedida aos motores, em graus por segundo */
+  pan: number
+  tilt: number
 }
 
 /** Uma linha com o estado da app num instante. */
 export function sampleLine(s: Sample): string {
   const osmo = s.docked
-    ? `Osmo ligado, pedidos ${s.aims} (recusados ${s.refused})` +
+    ? `Osmo ligado (${s.control}), pedidos ${s.aims} (recusados ${s.refused})` +
+      (s.control === 'direct' ? `, a pedir pan ${s.pan.toFixed(0)}°/s tilt ${s.tilt.toFixed(0)}°/s` : '') +
       (s.yaw != null && s.pitch != null
         ? `, motores ${s.yaw.toFixed(0)}° / ${s.pitch.toFixed(0)}°`
         : '')
