@@ -10,6 +10,9 @@ export const STEER = {
   deadZone: (1 * Math.PI) / 180,
   // velocidade máxima de cada motor, por segundo
   maxSpeed: 1,
+  // Subir e descer fica desligado: no treino o motor de cima/baixo quase não respondeu
+  // e não deu para confirmar o sentido. Num campo visto de lado chega rodar.
+  tilt: false,
 } as const
 
 /** Velocidades dos motores, em radianos por segundo. */
@@ -34,5 +37,5 @@ export function steerVelocity(box: Box, zoom: number, gain: number): Velocity {
     if (Math.abs(angle) < STEER.deadZone) return 0
     return Math.max(-STEER.maxSpeed, Math.min(STEER.maxSpeed, gain * angle))
   }
-  return { yaw: toSpeed(c.x - 0.5, halfW), pitch: toSpeed(c.y - 0.5, halfH) }
+  return { yaw: toSpeed(c.x - 0.5, halfW), pitch: STEER.tilt ? toSpeed(c.y - 0.5, halfH) : 0 }
 }

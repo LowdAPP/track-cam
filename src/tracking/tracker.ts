@@ -94,6 +94,15 @@ function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v))
 }
 
+/**
+ * Quanto da velocidade sobra depois de `dtMs` sem ver o alvo. Conta o tempo e não
+ * os frames: no telemóvel os frames chegam a ritmos diferentes, e a previsão
+ * fugia do jogador quando eram lentos.
+ */
+function damping(dtMs: number): number {
+  return Math.pow(TRACK.velocityDamping, dtMs / TRACK.dampingStepMs)
+}
+
 function moved(box: Box, to: Point): Box {
   return { x: to.x - box.w / 2, y: to.y - box.h / 2, w: box.w, h: box.h }
 }
@@ -219,7 +228,7 @@ function follow(
       box: lost ? box : predictedBox,
       velocity: lost
         ? { x: 0, y: 0 }
-        : { x: state.velocity.x * TRACK.velocityDamping, y: state.velocity.y * TRACK.velocityDamping },
+        : { x: state.velocity.x * damping(dtMs), y: state.velocity.y * damping(dtMs) },
       reference,
       recent,
       unseenMs,

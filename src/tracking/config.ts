@@ -21,7 +21,9 @@ export const TRACK = {
   weightSize: 0.2,
   // tempo máximo a prever sem ver
   coastMs: 1200,
+  // sem ver o alvo, a velocidade prevista cai para isto a cada `dampingStepMs`
   velocityDamping: 0.9,
+  dampingStepMs: 33,
   // a referência de cor só se atualiza quando há um único candidato
   referenceBlend: 0.05,
   reacquireSimilarity: 0.6,

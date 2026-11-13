@@ -24,6 +24,10 @@ export const ZOOM_STEPS = [1, 2, 3] as const
 
 // Quão depressa o Osmo fecha o desvio (por segundo). A jogada é mais calma: a mira
 // dela já vem suavizada, e somar pressa a esse atraso fazia a câmara oscilar.
+// Depois de mudar o zoom, as imagens ainda chegam com o zoom antigo durante uns
+// instantes. O seguidor espera este tempo antes de voltar a comparar posições: sem
+// isso perdia o jogador a cada mudança e o zoom andava a abrir e a fechar.
+const ZOOM_SETTLE_MS = 400
 const PLAYER_GAIN = 2
 const PLAY_GAIN = 1.2
 
@@ -63,6 +67,7 @@ export function useFollow(dock: Dock) {
   const lastCommand = useRef<Command['kind']>('none')
   const fps = useRef(0)
   const lastStatus = useRef<string>('player/idle')
+  const settleUntil = useRef(0)
   const lastSampleAt = useRef(0)
   const [view, setView] = useState<FollowView>({
     mode: 'player',
@@ -99,7 +104,8 @@ export function useFollow(dock: Dock) {
         tilt: dockStats.tilt,
       })
     const now = Date.now()
-    const key = `${m}/${status}`
+    // "a seguir" e "a prever" alternam muitas vezes por segundo: contam como o mesmo
+    const key = `${m}/${status === 'coasting' ? 'tracking' : status}`
     if (key !== lastStatus.current) {
       report(`MUDOU ${lastStatus.current} -> ${key} | ${line()}`)
       if (status === 'lost') {
@@ -125,6 +131,10 @@ export function useFollow(dock: Dock) {
       // O zoom muda as posições de tudo: o seguidor acompanha essa mudança.
       const settled =
         decision.zoom === zoom.current ? next : rescale(next, decision.zoom / zoom.current)
+      if (decision.zoom !== zoom.current) {
+        report(`ZOOM aplicado ${decision.zoom}x`)
+        settleUntil.current = Date.now() + ZOOM_SETTLE_MS
+      }
       zoom.current = decision.zoom
       state.current = settled
 
@@ -190,11 +200,13 @@ export function useFollow(dock: Dock) {
   const onFrame = useCallback(
     (result: FrameResult) => {
       const now = Date.now()
-      const dtMs = lastFrameAt.current > 0 ? now - lastFrameAt.current : 0
-      lastFrameAt.current = now
-      if (dtMs > 0) fps.current = fps.current * 0.8 + (1000 / dtMs) * 0.2
       people.current = result.people
       frame.current = result
+      // À espera de o zoom assentar: o tempo continua a contar para o passo seguinte.
+      if (mode.current === 'player' && now < settleUntil.current) return
+      const dtMs = lastFrameAt.current > 0 ? now - lastFrameAt.current : 0
+      lastFrameAt.current = now
+      if (dtMs > 0 && dtMs < ZOOM_SETTLE_MS) fps.current = fps.current * 0.8 + (1000 / dtMs) * 0.2
       if (mode.current === 'play') applyPlay(playStep(play.current, result.people, dtMs))
       else apply(step(state.current, result.people, dtMs))
     },

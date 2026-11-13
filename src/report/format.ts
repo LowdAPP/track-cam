@@ -48,7 +48,7 @@ export function sampleLine(s: Sample): string {
     `estado ${s.mode}/${s.status}`,
     `zoom ${s.zoom}x`,
     `${s.fps.toFixed(0)} fps`,
-    `${s.processMs.toFixed(0)} ms${s.twoPasses ? ' (2 passes)' : ''}`,
+    `${s.processMs.toFixed(0)} ms${s.twoPasses ? ' (detalhe)' : ''}`,
     `${s.people} pessoas`,
     `alvo ${describeBox(s.target)}`,
     osmo,

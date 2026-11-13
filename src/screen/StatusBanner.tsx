@@ -28,7 +28,7 @@ export function StatusBanner({ dock, view, recorder, problem, ready }: Props) {
   const frame = view.frame
   const diagnostics = [
     `${view.fps.toFixed(0)} fps`,
-    frame != null ? `${frame.processMs.toFixed(0)} ms${frame.usedCrop ? ' (2 passes)' : ''}` : null,
+    frame != null ? `${frame.processMs.toFixed(0)} ms${frame.usedCrop ? ' (detalhe)' : ''}` : null,
     `${view.people.length} pessoas`,
     dock.lastError != null ? `Osmo: ${dock.lastError}` : null,
   ]

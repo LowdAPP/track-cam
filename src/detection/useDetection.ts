@@ -9,10 +9,14 @@ import type { PersonDetection } from '../tracking/tracker'
 import { cropToRgb } from './crop'
 import { decodePeople, merge, MODEL_SIZE } from './model'
 
-/** O passe de detalhe só corre para alvos mais baixos do que esta fração da imagem... */
+/** O passe de detalhe só corre para alvos mais baixos do que esta fração da imagem. */
 const DETAIL_BELOW_HEIGHT = 0.25
-/** ...e só de N em N frames. */
-const DETAIL_EVERY = 2
+/**
+ * Com um alvo pequeno, a imagem inteira só é vista de N em N frames. Medido no
+ * pavilhão: a 1x só o passe de detalhe vê o jogador, por isso é ele que corre sempre;
+ * a imagem inteira serve para saber onde andam os outros.
+ */
+const FULL_EVERY = 3
 
 export interface FrameResult {
   people: PersonDetection[]
@@ -63,17 +67,6 @@ export function useDetection({ focus, onResult, onError }: Options) {
         if (model == null || resizer == null) return
         const started = Date.now()
 
-        // 1.º passe: a imagem inteira, reduzida.
-        const resized = resizer.resize(frame)
-        const fullRgb = new Uint8Array(resized.getPixelBuffer())
-        let people = decodePeople(model.runSync([fullRgb.buffer]) as ArrayBuffer[], fullRgb)
-        resized.dispose()
-
-        // 2.º passe: um recorte à volta do alvo, sem reduzir tanto.
-        let usedCrop = false
-        // Custa várias vezes o 1.º passe (medido no iPhone: de 30 para 6 imagens por
-        // segundo). Por isso só corre quando o alvo é pequeno na imagem, e uma vez sim,
-        // outra não: um alvo grande já se vê bem na imagem inteira.
         const target = focus.getDirty()
         const store = globalThis as unknown as {
           __trackCamCrop?: Uint8Array<ArrayBuffer>
@@ -81,7 +74,20 @@ export function useDetection({ focus, onResult, onError }: Options) {
         }
         const turn = (store.__trackCamTurn ?? 0) + 1
         store.__trackCamTurn = turn
-        if (target != null && target.h < DETAIL_BELOW_HEIGHT && turn % DETAIL_EVERY === 0) {
+        const detail = target != null && target.h < DETAIL_BELOW_HEIGHT
+
+        // 1.º passe: a imagem inteira, reduzida.
+        let people: PersonDetection[] = []
+        if (!detail || turn % FULL_EVERY === 0) {
+          const resized = resizer.resize(frame)
+          const fullRgb = new Uint8Array(resized.getPixelBuffer())
+          people = decodePeople(model.runSync([fullRgb.buffer]) as ArrayBuffer[], fullRgb)
+          resized.dispose()
+        }
+
+        // 2.º passe: um recorte à volta do alvo, sem reduzir tanto.
+        let usedCrop = false
+        if (target != null && detail) {
           const planes = frame.getPlanes()
           if (planes.length >= 2) {
             if (store.__trackCamCrop == null) {

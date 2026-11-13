@@ -41,9 +41,10 @@ centro, e um botão marca os momentos a cortar mais tarde.
 - **Largar alvo**: deixa de seguir e o Osmo fica parado.
 - **Osmo: app / iOS** (aparece com o Osmo ligado, quando não está a gravar):
   escolhe quem centra o alvo. Em **app** (o normal), a app manda a velocidade
-  dos motores e aponta ao centro da caixa. Em **iOS**, entrega a caixa ao
-  sistema; no teste em casa a câmara subia para a cabeça e oscilava. O comando
-  pela app ainda não foi testado num iPhone.
+  do motor e roda para a esquerda e para a direita; não sobe nem desce (o motor
+  de cima/baixo não respondeu no treino). Em **iOS**, entrega a caixa ao
+  sistema; em casa a câmara subia para a cabeça e oscilava. O sentido de rodar
+  foi corrigido depois do treino de 13/11 e ainda não voltou a ser testado.
 - **Relatório** (aparece quando não está a gravar): abre a partilha do iPhone
   com um ficheiro de texto do que a app fez (toques, quando perdeu o jogador,
   fps, o que o Osmo aceitou e recusou). O ficheiro guarda também as sessões

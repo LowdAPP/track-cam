@@ -1,3 +1,4 @@
+import { report } from '../report/report'
 import { Directory, File, Paths } from 'expo-file-system'
 import { Album, Asset, requestPermissionsAsync } from 'expo-media-library'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -55,6 +56,9 @@ async function saveGoal(path: string) {
   }
 }
 
+/** Se o vídeo não fechar sozinho este tempo depois de se mandar parar, a app fecha a gravação. */
+const STOP_TIMEOUT_MS = 4000
+
 interface Session {
   game: string
   dir: Directory
@@ -74,6 +78,8 @@ interface Session {
   previous: string | null
   /** vídeos que não chegaram às Fotografias: não se apagam da app */
   unsaved: Set<string>
+  /** fecha o vídeo em curso; usado quando a câmara não avisa que ele fechou */
+  finish: ((path: string, reason: SegmentEnd) => void) | null
 }
 
 /** Grava o jogo em vídeos seguidos de até 3 minutos e guarda-os nas Fotografias. */
@@ -112,8 +118,10 @@ export function useGameRecorder(audio: boolean) {
     try {
       await Asset.create(`file://${path}`)
       saved = true
-    } catch {
+      report(`GRAVAÇÃO: guardado nas Fotografias: ${path.split('/').pop()}`, true)
+    } catch (e) {
       saved = false
+      report(`GRAVAÇÃO: NÃO guardou ${path.split('/').pop()}: ${String(e)}`, true)
     }
     const next = afterSave(saved, path)
     if (next.notice != null) setNotice(next.notice)
@@ -150,8 +158,12 @@ export function useGameRecorder(audio: boolean) {
       const filePath = (i: number) => toPath(new File(s.dir, segmentFileName(s.game, i)).uri)
       const settings = (i: number) => ({ filePath: filePath(i), maxDuration: SEGMENT_SECONDS })
 
+      let done = false
       const finished = (path: string, reason: SegmentEnd) => {
-        if (session.current !== s) return
+        if (done || session.current !== s) return
+        done = true
+        s.finish = null
+        report(`GRAVAÇÃO: parte ${index + 1} fechou (${reason})`, true)
         const endMs = s.endAt ?? Date.now()
         const goal = s.pendingGoal
         const before = s.previous
@@ -186,11 +198,13 @@ export function useGameRecorder(audio: boolean) {
       const recorder = s.prepared ?? (await videoOutput.createRecorder(settings(index)))
       s.prepared = null
       s.current = recorder
+      s.finish = finished
       await recorder.startRecording(
         (path: string, reason: RecordingFinishedReason) => finished(path, reason),
         () => finished(recorder.filePath, 'error'),
       )
       s.segmentStarts[index] = Date.now()
+      report(`GRAVAÇÃO: parte ${index + 1} começou`, true)
       setSegment(index)
       setStatus('recording')
 
@@ -241,6 +255,7 @@ export function useGameRecorder(audio: boolean) {
       endAt: null,
       previous: null,
       unsaved: new Set(),
+      finish: null,
     }
     session.current = s
     startedAt.current = Date.now()
@@ -261,11 +276,22 @@ export function useGameRecorder(audio: boolean) {
   const stop = useCallback(async () => {
     const s = session.current
     if (s == null || s.current == null) return
+    const recorder = s.current
     s.userStopped = true
     s.endAt = Date.now()
+    report('GRAVAÇÃO: pedido para parar', true)
+    // No treino de 13/11 a gravação não parou: a câmara nunca avisou que o vídeo tinha
+    // fechado. Se o aviso não chegar, a app fecha a gravação e tenta guardar o ficheiro.
+    setTimeout(() => {
+      if (session.current !== s || s.current !== recorder || s.finish == null) return
+      report('GRAVAÇÃO: a câmara não avisou que o vídeo fechou; fechado pela app', true)
+      s.finish(recorder.filePath, 'stopped')
+    }, STOP_TIMEOUT_MS)
     try {
-      await s.current.stopRecording()
+      await recorder.stopRecording()
+      report('GRAVAÇÃO: a câmara aceitou parar', true)
     } catch (e) {
+      report(`GRAVAÇÃO: erro ao parar: ${String(e)}`, true)
       session.current = null
       setStatus('idle')
       setNotice(`Erro ao parar a gravação: ${String(e)}`)

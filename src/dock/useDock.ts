@@ -129,7 +129,9 @@ export function useDock(): Dock {
         dockStats.pan = (v.yaw * 180) / Math.PI
         dockStats.tilt = (v.pitch * 180) / Math.PI
         what = `motores pan ${dockStats.pan.toFixed(1)}°/s tilt ${dockStats.tilt.toFixed(1)}°/s`
-        command = () => DockModule.steer(v.pitch, v.yaw)
+        // Medido no Osmo Mobile 8 (treino de 13/11): velocidade positiva roda para a
+        // ESQUERDA, ao contrário do exemplo da Apple. Por isso o sinal troca aqui.
+        command = () => DockModule.steer(v.pitch, -v.yaw)
       } else {
         // Sem a matriz da câmara, como no teste que funcionou com o Osmo Mobile 8.
         const r = toDockRect(box)

@@ -7,16 +7,14 @@ test('alvo no centro: a câmara fica parada', () => {
   expect(steerVelocity(at(0.505, 0.49), 1, 2)).toEqual({ pitch: 0, yaw: 0 })
 })
 
-test('alvo à direita e em baixo: roda para a direita e desce', () => {
-  const v = steerVelocity(at(0.8, 0.7), 1, 2)
-  expect(v.yaw).toBeGreaterThan(0)
-  expect(v.pitch).toBeGreaterThan(0)
+test('alvo à direita: roda para a direita; à esquerda: para a esquerda', () => {
+  expect(steerVelocity(at(0.8, 0.7), 1, 2).yaw).toBeGreaterThan(0)
+  expect(steerVelocity(at(0.2, 0.3), 1, 2).yaw).toBeLessThan(0)
 })
 
-test('alvo à esquerda e em cima: roda para a esquerda e sobe', () => {
-  const v = steerVelocity(at(0.2, 0.3), 1, 2)
-  expect(v.yaw).toBeLessThan(0)
-  expect(v.pitch).toBeLessThan(0)
+test('não sobe nem desce (desligado até se confirmar o motor no Osmo)', () => {
+  expect(steerVelocity(at(0.8, 0.9), 1, 2).pitch).toBe(0)
+  expect(steerVelocity(at(0.2, 0.1), 1, 2).pitch).toBe(0)
 })
 
 test('quanto mais longe do centro, mais depressa, até ao máximo', () => {
